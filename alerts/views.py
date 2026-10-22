@@ -33,7 +33,9 @@ def alerts_json(request):
     if request.GET.get("open"):
         qs = qs.filter(status__in=qs.model.OPEN)
     if request.GET.get("patient_id"):
-        qs = qs.filter(patient_id=request.GET["patient_id"])
+        if not request.GET["patient_id"].isdigit():
+            return JsonResponse({"error": "patient_id должен быть числом"}, status=400)
+        qs = qs.filter(patient_id=int(request.GET["patient_id"]))
     return JsonResponse({"alerts": [a.as_dict() for a in qs[:200]]}, json_dumps_params={"ensure_ascii": False})
 
 

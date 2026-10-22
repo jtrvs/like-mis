@@ -17,6 +17,14 @@ class ExtractionApi(TestCase):
         self.assertIn("G40", r["extracted"]["diagnoses"])
         self.assertEqual(r["aviandr"]["verdict"], "red")  # эпилепсия — противопоказание
 
+    def test_cirrhosis_without_class_is_red(self):
+        u = User.objects.create_user("doc2", password="x")
+        u.groups.add(Group.objects.get_or_create(name="doctor")[0])
+        self.client.login(username="doc2", password="x")
+        r = self.client.post("/api/extract", {"text": "Пациент 40 лет. Ds F41.1. Цирроз печени, печеночная недостаточность. СКФ 92"},
+                             content_type="application/json").json()
+        self.assertEqual(r["aviandr"]["verdict"], "red")
+
     def test_extractor_basics(self):
         d = extract("Пациентка 34 лет. Ds: F41.1. Принимает Золофт 50 мг 1 р/д. Ранее принимала пароксетин, отменён. PHQ-9 — 14 б.")
         self.assertEqual(d["medications"][0]["inn"], "сертралин")

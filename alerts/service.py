@@ -12,8 +12,11 @@ from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 
+import logging
+
 import yaml
 from django.conf import settings
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from clinical.engine import rules
@@ -23,7 +26,8 @@ from . import facts as facts_mod
 from .models import Alert, AlertDelivery
 
 RULES_PATH = Path(__file__).resolve().parent / "data" / "alert_rules.yaml"
-DEDUP_WINDOW = timedelta(hours=12)
+TRIGGERS = {"scale", "checkin", "message", "intake", "schedule"}
+log = logging.getLogger("alerts")
 DEFAULTS = {"ACK_TIMEOUT_MIN": 15, "MAX_RETRIES": 2, "CHANNELS": ["inapp", "log"]}
 
 
@@ -56,6 +60,11 @@ def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text
 
     Возвращает {"alerts": [...], "show_crisis_screen": bool, "patient_actions": [...], "doctor_actions": [...]}
     """
+    import re
+    if re.search(r"[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+", patient_label or ""):
+        raise ValueError("patient_label похож на ФИО — передайте метку без персональных данных, например «П-0042»")
+    if trigger not in TRIGGERS:  # опечатка в trigger молча отключила бы все правила
+        raise ValueError(f"trigger должен быть одним из {sorted(TRIGGERS)}, получено {trigger!r}")
     received_at = received_at or timezone.now()
     f = dict(facts or {})
     f.update(facts_mod.from_text(text))
@@ -65,16 +74,20 @@ def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text
             continue  # правило проверяется только на новое событие своего типа — старые данные не поднимают сигнал снова
         if not rules.evaluate(r["when"], f):
             continue
-        # дубль — только пока такой же сигнал ещё не просмотрен; после отметки врача новое событие снова поднимает сигнал
-        if Alert.objects.filter(patient_id=patient_id, rule_id=r["id"], status__in=Alert.OPEN,
-                                created_at__gte=timezone.now() - DEDUP_WINDOW).exists():
+        # Дубль — пока такой же сигнал по пациенту ещё не просмотрен врачом. После отметки врача новое событие
+        # снова поднимает сигнал. Защита от гонки — частичный уникальный индекс в базе (см. models.Alert.Meta).
+        if Alert.objects.filter(patient_id=patient_id, rule_id=r["id"], status__in=Alert.OPEN).exists():
             continue
-        a = Alert.objects.create(
-            patient_id=patient_id, patient_label=patient_label, card_url=card_url, doctor=doctor, backup_doctor=backup_doctor,
-            rule_id=r["id"], severity=r["severity"], title=r["title"], facts=f,
-            patient_actions=r.get("patient_actions", []), doctor_actions=r.get("doctor_actions", []),
-            source_received_at=received_at,
-        )
+        try:
+            with transaction.atomic():
+                a = Alert.objects.create(
+                    patient_id=patient_id, patient_label=patient_label, card_url=card_url, doctor=doctor, backup_doctor=backup_doctor,
+                    rule_id=r["id"], severity=r["severity"], title=r["title"], facts=_jsonable(f),
+                    patient_actions=r.get("patient_actions", []), doctor_actions=r.get("doctor_actions", []),
+                    source_received_at=received_at,
+                )
+        except IntegrityError:
+            continue  # параллельный запрос уже создал такой же сигнал
         dispatch(a)
         created.append(a)
     pa = sorted({x for a in created for x in a.patient_actions})
@@ -84,6 +97,12 @@ def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text
         "patient_actions": pa,
         "doctor_actions": sorted({x for a in created for x in a.doctor_actions}),
     }
+
+
+def _jsonable(d):
+    """В JSONField нельзя положить datetime и т. п. — приводим к строкам."""
+    import json
+    return json.loads(json.dumps(d, default=str, ensure_ascii=False))
 
 
 def dispatch(alert, user=None):
@@ -114,11 +133,12 @@ def visible_to(user):
 
 
 def acknowledge(alert, user, resolution=""):
-    alert.status = "acknowledged"
-    alert.acknowledged_at = timezone.now()
-    alert.acknowledged_by = user
-    alert.resolution = resolution
-    alert.save(update_fields=["status", "acknowledged_at", "acknowledged_by", "resolution"])
+    """Отметка врача. Уже просмотренный сигнал повторно не перезаписывается (сохраняем, кто и когда отреагировал)."""
+    now = timezone.now()
+    n = Alert.objects.filter(id=alert.id, status__in=Alert.OPEN).update(
+        status="acknowledged", acknowledged_at=now, acknowledged_by=user, resolution=resolution)
+    alert.refresh_from_db()
+    return bool(n)
 
 
 def process_pending(now=None):
@@ -128,19 +148,26 @@ def process_pending(now=None):
     stats = {"redelivered": 0, "retried": 0, "escalated": 0}
     for a in Alert.objects.filter(status="new"):  # например, все каналы были недоступны
         stats["redelivered"] += dispatch(a)
-    for a in Alert.objects.filter(status__in=["delivered", "escalated"], severity__in=["critical", "high"]):
+    stats["unanswered"] = 0
+    for a in Alert.objects.filter(status__in=["delivered", "escalated"], severity__in=["critical", "high"], exhausted_at__isnull=True):
         last = a.deliveries.order_by("-sent_at").first()
         if last and now - last.sent_at < timeout:
             continue
+        open_now = Alert.objects.filter(id=a.id, status__in=["delivered", "escalated"])  # врач мог отметить секунду назад
         if a.retries < cfg("MAX_RETRIES"):
-            a.retries += 1
-            a.save(update_fields=["retries"])
-            dispatch(a, a.escalated_to or a.doctor)
-            stats["retried"] += 1
-        elif a.escalated_to is None and a.backup_doctor_id:
-            a.escalated_to = a.backup_doctor
-            a.status = "escalated"
-            a.save(update_fields=["escalated_to", "status"])
-            dispatch(a, a.escalated_to)
-            stats["escalated"] += 1
+            if open_now.update(retries=a.retries + 1):
+                a.refresh_from_db()
+                dispatch(a, a.escalated_to or a.doctor)
+                stats["retried"] += 1
+        elif a.escalated_to_id is None and a.backup_doctor_id:
+            # передаём резервному врачу и даём ему тот же цикл повторов
+            if open_now.update(escalated_to=a.backup_doctor_id, status="escalated", retries=0):
+                a.refresh_from_db()
+                dispatch(a, a.escalated_to)
+                stats["escalated"] += 1
+        else:
+            # ни ведущий, ни резервный не ответили (или резервного нет) — громко в журнал, один раз
+            if open_now.update(exhausted_at=now):
+                log.critical("СИГНАЛ БЕЗ ОТВЕТА: alert %s, пациент %s, правило %s", a.id, a.patient_label, a.rule_id)
+                stats["unanswered"] += 1
     return stats

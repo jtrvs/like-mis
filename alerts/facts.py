@@ -70,6 +70,9 @@ def from_intakes(intakes: list[dict], now: datetime | None = None) -> dict:
       {"scheduled_at": datetime, "taken": True | False | None}   (None — пациент не отметил)
     """
     now = now or timezone.now()
+    aware = lambda dt: timezone.make_aware(dt) if timezone.is_naive(dt) else dt  # noqa: E731
+    intakes = [{**i, "scheduled_at": aware(i["scheduled_at"])} for i in intakes]
+    now = aware(now)
     past = [i for i in intakes if i["scheduled_at"] <= now]
     stale = [i for i in past if i["scheduled_at"] <= now - timedelta(hours=12)]
     return {

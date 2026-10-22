@@ -14,8 +14,8 @@
 - `like_mis/settings.py`: три приложения в `INSTALLED_APPS` и блок `ALERTS` в конце;
 - `like_mis/urls.py`: подключены `alerts.urls` и `extraction.urls`;
 - `requirements.txt`: `PyYAML`;
-- `docker-compose.yml`: два новых сервиса — `alerts-worker` (повтор сигналов) и `backup` (копия базы каждые 15 минут). `db` и `web` не тронуты;
-- `.gitignore`: папка `backups/`.
+- `docker-compose.yml`: два новых сервиса — `alerts-worker` (повтор сигналов, читает `.env`) и `backup` (копия базы каждые 15 минут), оба с `restart: unless-stopped`. `db` и `web` не тронуты;
+- `.gitignore`: папка `backups/` (в копиях базы — персональные данные); новый `.dockerignore` — чтобы `.env`, `.git` и бэкапы не попадали в образ.
 
 ## Как подключить к моделям Юли — одна функция
 
@@ -26,10 +26,10 @@ from alerts import facts, service
 
 result = service.report_event(
     patient_id=patient.id,               # ID пациента в вашей модели
-    patient_label=f"П-{patient.id:04d}", # метка БЕЗ ФИО — уйдёт в мессенджер
+    patient_label=f"П-{patient.id:04d}", # метка БЕЗ ФИО (похожее на ФИО — ошибка ValueError)
     doctor=lead_doctor_user,             # User ведущего врача
     backup_doctor=backup_user,           # User резервного врача (можно None)
-    trigger="scale",                     # "scale" | "checkin" | "message" | "intake" | "schedule"
+    trigger="scale",                     # "scale" | "checkin" | "message" | "intake" | "schedule" (иное — ValueError)
     facts=facts.from_scale("phq9", answers, previous_total=prev),   # см. ниже
     text="",                             # новый текст пациента, если есть
     card_url=f"/doctor/patient/{patient.id}/",
@@ -50,6 +50,19 @@ if result["show_crisis_screen"]:
 
 Экран помощи можно показать и без сигнала: `facts.needs_crisis_screen(text, phq9_answers)`.
 
+**Пациенты, которые ничего не присылают** (перестали отмечать таблетки — правило `diary_abandoned`). Сигнал на событие не сработает, раз событий нет. Для этого фоновый процесс раз в час вызывает функцию из настроек:
+
+```python
+# like_mis/settings.py
+ALERTS["SCHEDULE_HOOK"] = "patients.alerts_hook.silent_patients"
+
+# patients/alerts_hook.py — отдаёт аргументы report_event по каждому пациенту на терапии
+def silent_patients():
+    for p in Patient.objects.filter(on_therapy=True):
+        yield dict(patient_id=p.id, patient_label=f"П-{p.id:04d}", doctor=p.doctor, backup_doctor=p.backup_doctor,
+                   facts=facts.from_intakes([...последние приёмы, новые первыми...]))
+```
+
 Проверка Авиандра для карточки:
 
 ```python
@@ -62,13 +75,20 @@ findings = safety.check("aviandr", {
 safety.verdict(findings)   # "green" | "yellow" | "red"
 ```
 
+Важно: «зелёный» выдаётся только при полных данных. Если беременность, ГВ, возраст или СКФ неизвестны — передавайте `None`, будет «жёлтый» с пояснением, что не проверено. Печёночная/почечная недостаточность без класса и цифры — `conditions: ["hepatic_failure"]` / `["renal_failure"]` → «красный». Названия препаратов можно передавать как угодно («Аурорикс 300 мг», «Золофт (сертралин)») — система приведёт их к МНН.
+
 ## Для интерфейса (Стас)
 - `GET /alerts/` — готовая страница сигналов врача (можно взять как есть или как образец);
 - `GET /api/alerts/?open=1` — сигналы текущего врача в JSON; `?patient_id=42` — по пациенту;
-- `POST /api/alerts/<id>/ack/` с `{"resolution": "что сделано"}` — отметить просмотренным;
+- `POST /api/alerts/<id>/ack/` с `{"resolution": "что сделано"}` — отметить просмотренным. Из JavaScript нужен заголовок `X-CSRFToken` (значение из cookie `csrftoken`), иначе Django ответит 403 — это защита, а не ошибка. Повторная отметка не перезаписывает первую (кто и когда отреагировал);
 - `POST /api/extract` с `{"text": "..."}` — разбор выписки.
 
-Кто считается врачом — функция `alerts/permissions.py: is_doctor` (сейчас: `is_staff`, группа `doctor` или `user.doctor`). Когда появятся роли, правится только она.
+Кто считается врачом — функция `alerts/permissions.py: is_doctor` (сейчас: группа `doctor` или `user.doctor`; администратор без роли врача доступа не получает). Когда появятся роли, правится только она.
+
+## Как работают повторы
+Срочный/важный сигнал без отметки 15 минут → повтор ведущему врачу (до 2 раз) → передача резервному врачу и ему тоже до 2 повторов → если не ответил никто (или резервного нет) — запись уровня CRITICAL в журнал `docker compose logs alerts-worker` («СИГНАЛ БЕЗ ОТВЕТА»). Отметка врача в любой момент останавливает повторы.
+
+В мессенджер/почту уходит только «Лямбда: новый сигнал «Срочно», пациент П-0042» и ссылка — без сути сигнала (это сведения о здоровье, а мессенджер — сторонний сервис).
 
 ## Как посмотреть самому
 ```bash
@@ -79,7 +99,7 @@ docker compose exec web python manage.py alerts_demo
 
 ## Команды
 ```bash
-docker compose exec web python manage.py test                     # тесты (28)
+docker compose exec web python manage.py test                     # тесты (45)
 docker compose exec web python manage.py bench_alerts --n 300     # замер скорости сигналов (на тестовой базе)
 docker compose exec web python extraction/evaluate.py extraction/data/histories/test   # точность разбора выписок
 docker compose exec backup sh /ops/restore.sh                     # восстановить последнюю копию базы
@@ -88,10 +108,13 @@ python scripts/loadtest.py --url http://localhost:8000/api/extract --cookie "ses
 
 ## Цифры (PostgreSQL 16, проверено на этой ветке)
 - сигнал врачу: медиана **4,3 мс**, p95 **5,8 мс** (300 событий, потерь 0);
+- 8 одновременных одинаковых событий → ровно 1 сигнал (защита уникальным индексом в базе);
 - разбор выписок: **F1 = 0,935** на 12 историях, которых система не видела при разработке;
-- тесты: **28/28**.
+- тесты: **45/45** на PostgreSQL 16 и Python 3.12 (как в Docker-образе); независимое ревью — 12 находок исправлены, на каждую есть тест.
 
 ## Замечания к основному каркасу (не трогал, на усмотрение Юли)
 - `Dockerfile`: в последней строке `CMD [...]` не хватает закрывающей `]` — сейчас не мешает, потому что `docker-compose.yml` задаёт свою команду, но на продакшене с `CMD` упадёт.
 - `TIME_ZONE = 'UTC'` — время в интерфейсе будет по Гринвичу; для врачей удобнее `Europe/Moscow`. Страница сигналов уже показывает МСК сама.
-- Сервис `web` получает из окружения только `DJANGO_SECRET_KEY`; `DEBUG` и `ALLOWED_HOSTS` из `.env` в контейнер не попадают (берутся значения по умолчанию).
+- Сервис `web` получает из окружения только `DJANGO_SECRET_KEY`; `DEBUG`, `ALLOWED_HOSTS`, `PUBLIC_BASE_URL` из `.env` в контейнер не попадают. Предлагаю добавить ему `env_file: .env`, как у `alerts-worker`.
+- Для продакшена по https: `SESSION_COOKIE_SECURE`, `CSRF_COOKIE_SECURE`, `SECURE_SSL_REDIRECT` (`manage.py check --deploy` про них предупреждает).
+- Если будет своя модель пользователя (кастомный User) — её нужно сделать до первого `migrate`: таблица сигналов ссылается на пользователя.

@@ -3,8 +3,8 @@
 Вход — простой словарь «контекст пациента», чтобы движок не зависел от ORM и легко тестировался.
 
 ctx = {
-  "age": 34, "pregnant": False, "breastfeeding": False,
-  "egfr": 90, "child_pugh": "",              # "" | "A" | "B" | "C"
+  "age": 34, "pregnant": False, "breastfeeding": False,   # None = неизвестно → «проверьте», а не «зелёный»
+  "egfr": 90, "child_pugh": "",              # "" | "A" | "B" | "C" (регистр не важен)
   "conditions": ["epilepsy", ...],           # коды из словаря состояний
   "icd10": ["F41.1"],                         # диагнозы
   "current_drugs": ["сертралин"],            # МНН/торговые названия
@@ -30,8 +30,12 @@ class Finding:
 
 
 def normalize(drug_name: str) -> str:
-    """Торговое название → МНН (общий словарь с модулем разбора выписок)."""
-    n = drug_name.strip().lower().split("(")[0].strip()
+    """Торговое название → МНН (общий словарь с модулем разбора выписок).
+    «Аурорикс 300 мг», «Золофт (сертралин) 50мг» → «моклобемид», «сертралин»."""
+    import re
+    n = drug_name.strip().lower().replace("ё", "е")
+    n = n.split("(")[0]
+    n = re.split(r"\s*\d", n)[0].strip(" ,.;")  # отрезаем дозу и всё после неё
     return loader.trade_names().get(n, n)
 
 
@@ -43,8 +47,9 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
     d = loader.drugs()[drug_code]
     src = f"{d['source']['title']}, РУ {d['source']['reg_number']}"
     out: list[Finding] = []
-    conditions = set(ctx.get("conditions", []))
+    conditions = set(ctx.get("conditions") or [])
     age = ctx.get("age")
+    child_pugh = str(ctx.get("child_pugh") or "").strip().upper()
 
     # противопоказания
     for c in d["contraindications"]:
@@ -53,7 +58,7 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
             or ("pregnant" in c and ctx.get("pregnant"))
             or ("breastfeeding" in c and ctx.get("breastfeeding"))
             or ("egfr_below" in c and ctx.get("egfr") is not None and ctx["egfr"] < c["egfr_below"])
-            or ("child_pugh" in c and ctx.get("child_pugh") in c["child_pugh"])
+            or ("child_pugh" in c and child_pugh in c["child_pugh"])
             or ("age_below" in c and age is not None and age < c["age_below"])
         )
         if hit:
@@ -69,8 +74,8 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
 
     # взаимодействия: текущие препараты + недавно отменённые (для отмывочного периода).
     # Все механизмы для одного препарата сводятся в одну находку с наивысшим уровнем.
-    current = [(n, None) for n in ctx.get("current_drugs", [])]
-    recent = [(s["name"], s["days_ago"]) for s in ctx.get("stopped_drugs", [])]
+    current = [(n, None) for n in ctx.get("current_drugs") or []]
+    recent = [(s["name"], s["days_ago"]) for s in ctx.get("stopped_drugs") or []]
     per_drug: dict[str, list] = {}
     for rule in d.get("interactions", []):
         washout = next(
@@ -94,7 +99,7 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
         all_codes |= set(ind["icd10"])
         if not ind.get("requires") or ctx.get(ind["requires"]):
             allowed |= set(ind["icd10"])
-    dx = set(ctx.get("icd10", []))
+    dx = {str(c).strip().upper() for c in ctx.get("icd10") or []}
     if not dx:
         out.append(Finding("off_label", "no_diagnosis", "Диагноз не указан — соответствие показаниям не проверено.", src))
     elif not dx & allowed:
@@ -111,19 +116,25 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
             )
         )
 
-    # курс при тревоге после COVID-19 — 4 недели, не более 6
+    # курс при тревоге после COVID-19 — стандартно 4 недели, по решению врача до 6
     max_weeks = max((ind.get("max_weeks", 0) for ind in d["indications"] if set(ind["icd10"]) & dx and ind.get("requires")), default=0)
     if max_weeks and not dx & {c for ind in d["indications"] if not ind.get("requires") for c in ind["icd10"]}:
         weeks = ctx.get("weeks_on_drug")
-        if weeks is not None and weeks >= max_weeks:
-            out.append(Finding("caution", "course_limit", f"Курс при тревоге после COVID-19 — до {max_weeks} недель; идёт {weeks}-я неделя.", src))
+        if weeks is not None and weeks > max_weeks:
+            out.append(Finding("off_label", "course_exceeded", f"Курс при тревоге после COVID-19 — не более {max_weeks} недель; идёт {weeks}-я неделя. Продление — вне инструкции.", src))
+        elif weeks is not None and weeks > 4:
+            out.append(Finding("caution", "course_limit", f"Стандартный курс при тревоге после COVID-19 — 4 недели (продление до {max_weeks} — по решению врача); идёт {weeks}-я неделя.", src))
 
-    # неполные данные: не выдаём «зелёный» по умолчанию
-    if ctx.get("egfr") is None and any("egfr_below" in c for c in d["contraindications"]):
+    # неполные данные: не выдаём «зелёный» по умолчанию.
+    # Чтобы получить «зелёный», вызывающий код должен явно передать pregnant/breastfeeding=False и СКФ.
+    if ctx.get("egfr") is None and "renal_failure" not in conditions:
         out.append(Finding("caution", "egfr_unknown", "СКФ не указана — противопоказание при почечной недостаточности не проверено.", src))
-    if ctx.get("age") is None:
+    if age is None:
         out.append(Finding("caution", "age_unknown", "Возраст не указан — ограничение «до 18 лет» не проверено.", src))
-    for name in ctx.get("current_drugs", []):
+    for key, what in (("pregnant", "беременность"), ("breastfeeding", "грудное вскармливание")):
+        if ctx.get(key) is None:
+            out.append(Finding("caution", f"{key}_unknown", f"Не указано, есть ли {what}, — противопоказание не проверено.", src))
+    for name in list(ctx.get("current_drugs") or []) + [s["name"] for s in ctx.get("stopped_drugs") or []]:
         if normalize(name) not in loader.drug_classes():
             out.append(Finding("caution", "unknown_drug", f"{name}: препарат не найден в справочнике — проверьте взаимодействия вручную.", src))
 
