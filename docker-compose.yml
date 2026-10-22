@@ -30,5 +30,34 @@ services:
       db:
         condition: service_healthy
 
+  # --- роль 4 (Максим) ---
+  alerts-worker:   # раз в минуту: повтор неподтверждённых сигналов и передача резервному врачу
+    build: .
+    command: python manage.py process_alerts --loop --interval 60
+    volumes:
+      - .:/app
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backup:          # копия базы каждые 15 минут в папку ./backups, хранится сутки
+    image: postgres:16-alpine
+    command: /bin/sh /ops/backup.sh
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_HOST: db
+      BACKUP_INTERVAL: 900
+      BACKUP_KEEP: 96
+    volumes:
+      - ./ops:/ops:ro
+      - ./backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   postgres_data:

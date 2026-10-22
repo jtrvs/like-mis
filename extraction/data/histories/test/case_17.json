@@ -1,0 +1,35 @@
+{
+  "sex": "F",
+  "age": null,
+  "diagnoses": [
+    "F45.3",
+    "I10"
+  ],
+  "medications": [
+    {
+      "inn": "амлодипин",
+      "dose_mg": 5,
+      "times_per_day": 1
+    },
+    {
+      "inn": "этифоксин",
+      "dose_mg": 50,
+      "times_per_day": 3
+    }
+  ],
+  "stopped_medications": [
+    "фабомотизол"
+  ],
+  "scales": {
+    "hads_a": 10,
+    "hads_d": 6
+  },
+  "suicidal_risk": false,
+  "conditions": [
+    "cardiovascular_disease"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

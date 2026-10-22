@@ -1,0 +1,46 @@
+{
+  "sex": "F",
+  "age": 67,
+  "diagnoses": [
+    "F41.1",
+    "I25",
+    "N18"
+  ],
+  "medications": [
+    {
+      "inn": "буспирон",
+      "dose_mg": 5,
+      "times_per_day": 3
+    },
+    {
+      "inn": "бисопролол",
+      "dose_mg": 5,
+      "times_per_day": 1
+    },
+    {
+      "inn": "аторвастатин",
+      "dose_mg": 20,
+      "times_per_day": 1
+    },
+    {
+      "inn": "ацетилсалициловая кислота",
+      "dose_mg": 75,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [
+    "алпразолам"
+  ],
+  "scales": {
+    "hama": 24
+  },
+  "suicidal_risk": true,
+  "conditions": [
+    "cardiovascular_disease",
+    "renal_failure"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 52,
+  "child_pugh": null
+}

@@ -1,0 +1,39 @@
+{
+  "sex": "M",
+  "age": 58,
+  "diagnoses": [
+    "K74",
+    "F10.2",
+    "F41.1"
+  ],
+  "medications": [
+    {
+      "inn": "гидроксизин",
+      "dose_mg": 25,
+      "times_per_day": 2
+    },
+    {
+      "inn": "спиронолактон",
+      "dose_mg": 100,
+      "times_per_day": 1
+    },
+    {
+      "inn": "лактулоза",
+      "dose_mg": null,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [
+    "бромдигидрохлорфенилбензодиазепин"
+  ],
+  "scales": {},
+  "suicidal_risk": false,
+  "conditions": [
+    "hepatic_failure",
+    "substance_dependence"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": "B"
+}

@@ -1,0 +1,35 @@
+{
+  "sex": "M",
+  "age": 44,
+  "diagnoses": [
+    "T90",
+    "F06.4"
+  ],
+  "medications": [
+    {
+      "inn": "бетагистин",
+      "dose_mg": 24,
+      "times_per_day": 2
+    },
+    {
+      "inn": "венлафаксин",
+      "dose_mg": 37.5,
+      "times_per_day": 2
+    },
+    {
+      "inn": "гидроксизин",
+      "dose_mg": 25,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {},
+  "suicidal_risk": false,
+  "conditions": [
+    "organic_brain_disease"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

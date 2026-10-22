@@ -1,0 +1,30 @@
+{
+  "sex": "F",
+  "age": 32,
+  "diagnoses": [
+    "F41.0"
+  ],
+  "medications": [
+    {
+      "inn": "пароксетин",
+      "dose_mg": 10,
+      "times_per_day": 1
+    },
+    {
+      "inn": "клоназепам",
+      "dose_mg": 0.5,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "hads_a": 14,
+    "hads_d": 7
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

@@ -1,0 +1,24 @@
+{
+  "sex": "F",
+  "age": 31,
+  "diagnoses": [
+    "F32.1"
+  ],
+  "medications": [
+    {
+      "inn": "сертралин",
+      "dose_mg": 50,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "phq9": 17
+  },
+  "suicidal_risk": true,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": true,
+  "egfr": null,
+  "child_pugh": null
+}

@@ -1,0 +1,18 @@
+{
+  "sex": "F",
+  "age": 45,
+  "diagnoses": [
+    "F43.2"
+  ],
+  "medications": [],
+  "stopped_medications": [],
+  "scales": {
+    "gad7": 11
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

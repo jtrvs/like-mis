@@ -1,0 +1,58 @@
+# Маршрутизация к психиатру для врачей непсихиатрических специальностей (задача 8 кейса).
+# ЧЕРНОВИК: пороги и формулировки утверждает Алина, источники уточняются.
+# urgency: mandatory («обязательно») | desirable («желательно»)
+rules:
+  - id: suicidal_ideation
+    urgency: mandatory
+    when: {any: [{fact: phq9_item9, op: gte, value: 1}, {fact: suicide_keywords, op: is_true}]}
+    reason: Мысли о смерти или самоповреждении (PHQ-9, пункт 9, или высказывания пациента)
+    action: Экстренная консультация психиатра; при непосредственной угрозе — скорая помощь (112/103)
+    source: PHQ-9 (Kroenke 2001); КР МЗ РФ «Депрессивный эпизод, рекуррентное депрессивное расстройство» — TODO уточнить ID
+
+  - id: severe_depression
+    urgency: mandatory
+    when: {fact: phq9_total, op: gte, value: 20}
+    reason: Тяжёлая депрессивная симптоматика (PHQ-9 ≥ 20)
+    source: PHQ-9 (Kroenke 2001)
+
+  - id: psychotic_or_manic
+    urgency: mandatory
+    when: {any: [{fact: psychotic_symptoms, op: is_true}, {fact: manic_symptoms, op: is_true}]}
+    reason: Признаки психотических или маниакальных симптомов — вне компетенции первичного звена
+    source: TODO(Алина)
+
+  - id: substance_use
+    urgency: mandatory
+    when: {fact: substance_dependence, op: is_true}
+    reason: Сочетание тревоги/депрессии с зависимостью от ПАВ
+    source: TODO(Алина)
+
+  - id: severe_anxiety
+    urgency: desirable
+    when: {fact: gad7_total, op: gte, value: 15}
+    reason: Выраженная тревожная симптоматика (GAD-7 ≥ 15)
+    source: GAD-7 (Spitzer 2006)
+
+  - id: moderately_severe_depression
+    urgency: desirable
+    when: {all: [{fact: phq9_total, op: gte, value: 15}, {fact: phq9_total, op: lt, value: 20}]}
+    reason: Умеренно тяжёлая депрессия (PHQ-9 15–19)
+    source: PHQ-9 (Kroenke 2001)
+
+  - id: no_response
+    urgency: desirable
+    when: {all: [{fact: weeks_on_therapy, op: gte, value: 4}, {fact: score_improvement_pct, op: lt, value: 25}]}
+    reason: Нет ответа на терапию за 4 недели (снижение балла < 25%)
+    source: TODO(Алина) — критерии ответа на терапию
+
+  - id: pregnancy_depression
+    urgency: desirable
+    when: {all: [{fact: pregnant, op: is_true}, {fact: phq9_total, op: gte, value: 10}]}
+    reason: Клинически значимая депрессивная симптоматика при беременности — выбор терапии требует специалиста
+    source: TODO(Алина)
+
+  - id: pregnancy_anxiety
+    urgency: desirable
+    when: {all: [{fact: pregnant, op: is_true}, {fact: gad7_total, op: gte, value: 10}]}
+    reason: Клинически значимая тревожная симптоматика при беременности — выбор терапии требует специалиста
+    source: TODO(Алина)

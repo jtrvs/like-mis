@@ -1,0 +1,29 @@
+{
+  "sex": "F",
+  "age": 36,
+  "diagnoses": [
+    "F41.2"
+  ],
+  "medications": [
+    {
+      "inn": "сертралин",
+      "dose_mg": 50,
+      "times_per_day": 1
+    },
+    {
+      "inn": "гидроксизин",
+      "dose_mg": 12.5,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "phq9": 12
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

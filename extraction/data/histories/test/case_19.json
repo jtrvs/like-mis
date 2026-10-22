@@ -1,0 +1,37 @@
+{
+  "sex": "F",
+  "age": 42,
+  "diagnoses": [
+    "F33.1",
+    "E03"
+  ],
+  "medications": [
+    {
+      "inn": "дулоксетин",
+      "dose_mg": 60,
+      "times_per_day": 1
+    },
+    {
+      "inn": "кветиапин",
+      "dose_mg": 25,
+      "times_per_day": 1
+    },
+    {
+      "inn": "левотироксин натрия",
+      "dose_mg": 0.075,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [
+    "бромдигидрохлорфенилбензодиазепин"
+  ],
+  "scales": {
+    "hamd": 16
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

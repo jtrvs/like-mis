@@ -1,0 +1,32 @@
+{
+  "sex": "M",
+  "age": 36,
+  "diagnoses": [
+    "F43.1"
+  ],
+  "medications": [
+    {
+      "inn": "сертралин",
+      "dose_mg": 100,
+      "times_per_day": 1
+    },
+    {
+      "inn": "тразодон",
+      "dose_mg": 50,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [
+    "бромдигидрохлорфенилбензодиазепин"
+  ],
+  "scales": {
+    "phq9": 18,
+    "gad7": 14
+  },
+  "suicidal_risk": true,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}
