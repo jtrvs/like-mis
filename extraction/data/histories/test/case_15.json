@@ -1,0 +1,25 @@
+{
+  "sex": "M",
+  "age": 47,
+  "diagnoses": [
+    "F41.1",
+    "F33.4"
+  ],
+  "medications": [
+    {
+      "inn": "пирлиндол",
+      "dose_mg": 50,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "gad7": 14
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

@@ -1,0 +1,40 @@
+{
+  "sex": "M",
+  "age": 61,
+  "diagnoses": [
+    "E11",
+    "I10",
+    "F41.2"
+  ],
+  "medications": [
+    {
+      "inn": "метформин",
+      "dose_mg": 1000,
+      "times_per_day": 2
+    },
+    {
+      "inn": "лозартан",
+      "dose_mg": 50,
+      "times_per_day": 1
+    },
+    {
+      "inn": "агомелатин",
+      "dose_mg": 25,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "hads_a": 11,
+    "hads_d": 9
+  },
+  "suicidal_risk": false,
+  "conditions": [
+    "diabetes",
+    "cardiovascular_disease"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 74,
+  "child_pugh": null
+}

@@ -1,0 +1,20 @@
+{
+  "sex": "M",
+  "age": 23,
+  "diagnoses": [
+    "F32.0"
+  ],
+  "medications": [],
+  "stopped_medications": [
+    "флуоксетин"
+  ],
+  "scales": {
+    "phq9": 9
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

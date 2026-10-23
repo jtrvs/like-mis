@@ -1,0 +1,25 @@
+{
+  "sex": "M",
+  "age": 29,
+  "diagnoses": [
+    "G40",
+    "F41.1"
+  ],
+  "medications": [
+    {
+      "inn": "вальпроевая кислота",
+      "dose_mg": 500,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {},
+  "suicidal_risk": false,
+  "conditions": [
+    "epilepsy"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

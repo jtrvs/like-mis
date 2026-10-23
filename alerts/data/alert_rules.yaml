@@ -1,0 +1,72 @@
+# Правила критических состояний. Добавление/изменение — без правки кода.
+# По кастдеву: алертов должно быть мало и только по реально важному.
+# severity: critical — немедленно, все каналы + повтор + эскалация;
+#           high     — немедленно в кабинет и мессенджер;
+#           medium   — в карточку и ежедневную сводку, без push.
+# patient_actions: что система показывает пациенту сразу (без участия врача).
+# events: на какое новое событие правило проверяется (scale, checkin, message, intake, schedule).
+rules:
+  - id: suicide_risk_scale
+    events: [scale]
+    source: phq9_orig
+    severity: critical
+    title: Суицидальные мысли по PHQ-9 (пункт 9)
+    when: {fact: phq9_item9, op: gte, value: 1}
+    patient_actions: [show_hotlines, offer_trusted_contact, suggest_emergency]
+    doctor_actions: [propose_mandatory_referral]
+
+  - id: suicide_risk_text
+    events: [checkin, message]
+    severity: critical
+    title: Высказывания о суициде/самоповреждении в сообщении или дневнике
+    when: {fact: suicide_keywords, op: is_true}
+    patient_actions: [show_hotlines, offer_trusted_contact, suggest_emergency]
+    doctor_actions: [propose_mandatory_referral]
+
+  - id: mania_signs
+    events: [checkin]
+    severity: high
+    title: Возможные признаки мании (сон < 4 ч две ночи подряд при приподнятом настроении)
+    when: {all: [{fact: short_sleep_nights, op: gte, value: 2}, {fact: mood_last, op: gte, value: 9}]}
+    doctor_actions: [propose_mandatory_referral]
+
+  - id: alcohol_on_aviandr
+    events: [checkin]
+    source: aviandr_instr
+    severity: high
+    title: Алкоголь на фоне приёма Авиандра (инструкция — алкоголь запрещён)
+    when: {all: [{fact: on_aviandr, op: is_true}, {fact: alcohol_units_last, op: gte, value: 1}]}
+    patient_actions: [remind_no_alcohol]
+
+  - id: self_neglect
+    events: [checkin]
+    severity: high
+    title: Не выходит из дома и не ест 3 дня подряд
+    when: {all: [{fact: days_not_left_home, op: gte, value: 3}, {fact: days_not_eating, op: gte, value: 3}]}
+
+  - id: severe_worsening
+    events: [scale]
+    source: phq9_orig
+    severity: high
+    title: Резкое ухудшение — рост PHQ-9 на 5+ баллов к прошлому замеру
+    when: {fact: phq9_delta, op: gte, value: 5}
+
+  - id: nonadherence
+    events: [intake]
+    severity: medium
+    title: Пропуск приёма препарата 3 раза подряд
+    when: {fact: missed_doses_streak, op: gte, value: 3}
+    patient_actions: [remind_medication]
+
+  - id: side_effect
+    events: [checkin]
+    source: aviandr_instr
+    severity: medium
+    title: Нежелательное явление из списка мониторинга препарата
+    when: {fact: monitored_side_effects, op: is_true}
+
+  - id: diary_abandoned
+    events: [schedule, checkin, scale, message]
+    severity: medium
+    title: Пациент не отмечает приём препарата 3 дня (6 и более доз без отметки)
+    when: {fact: unmarked_doses_streak, op: gte, value: 6}

@@ -1,0 +1,36 @@
+{% load tz %}<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сигналы — Лямбда</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; color: #1E2A32; background: #FBFCFB; margin: 0; padding: 24px; max-width: 960px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .muted { color: #4A5A64; }
+  .sig { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border-radius: 8px; margin: 10px 0; }
+  .tag { grid-row: span 3; font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 3px; align-self: start; }
+  .critical { background: #B42318; color: #fff; } .critical .tag { background: #fff; color: #B42318; }
+  .high { background: #FFF6E5; border: 2px dashed #D99A1E; } .high .tag { color: #9A6200; border: 1.5px solid #D99A1E; }
+  .medium { background: #EEF3F4; } .medium .tag { border: 1px solid #D9E0E3; background: #fff; }
+  .done { opacity: .55; }
+  .title { font-weight: 600; } .meta { font-size: 13px; opacity: .85; }
+  form { display: flex; gap: 8px; margin-top: 6px; } input { flex: 1; padding: 6px 8px; border: 1px solid #D9E0E3; border-radius: 4px; }
+  button { padding: 6px 12px; border: 0; border-radius: 4px; background: #1F5F7A; color: #fff; cursor: pointer; }
+  .critical button { background: #fff; color: #B42318; }
+  a { color: inherit; }
+</style></head>
+<body>
+<h1>Сигналы</h1>
+<p class="muted">Срочные приходят и в мессенджер. Без отметки «просмотрено» через 15 минут — повтор, затем передача резервному врачу.</p>
+{% for a in alerts %}
+<div class="sig {{ a.severity }}{% if a.status not in a.OPEN %} done{% endif %}">
+  <span class="tag">{{ a.get_severity_display }}</span>
+  <div class="title">{{ a.title }} — {% if a.card_url %}<a href="{{ a.card_url }}">{{ a.patient_label }}</a>{% else %}{{ a.patient_label }}{% endif %}</div>
+  <div class="meta">{{ a.created_at|timezone:"Europe/Moscow"|date:"d.m H:i" }} (МСК){% if a.status != "delivered" %}, {{ a.get_status_display|lower }}{% endif %}{% if a.delivery_latency_ms is not None %}, доставлен за {{ a.delivery_latency_ms|floatformat:0 }} мс{% endif %}{% if a.escalated_to_id == request.user.id %}, передан вам как резервному врачу{% endif %}{% if a.resolution %}. Сделано: {{ a.resolution }}{% endif %}</div>
+  {% if a.status in a.OPEN %}
+  <form method="post" action="/api/alerts/{{ a.id }}/ack/">{% csrf_token %}
+    <input name="resolution" placeholder="Что сделано (например, позвонил пациенту)" aria-label="Что сделано">
+    <button>Отметить как просмотренный</button>
+  </form>
+  {% endif %}
+</div>
+{% empty %}<p>Сигналов нет.</p>{% endfor %}
+</body></html>

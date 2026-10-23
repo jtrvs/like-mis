@@ -1,0 +1,40 @@
+{
+  "sex": "F",
+  "age": 52,
+  "diagnoses": [
+    "F33.1",
+    "I10"
+  ],
+  "medications": [
+    {
+      "inn": "венлафаксин",
+      "dose_mg": 75,
+      "times_per_day": 2
+    },
+    {
+      "inn": "кветиапин",
+      "dose_mg": 25,
+      "times_per_day": 1
+    },
+    {
+      "inn": "лозартан",
+      "dose_mg": 50,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [
+    "пароксетин",
+    "бромдигидрохлорфенилбензодиазепин"
+  ],
+  "scales": {
+    "hamd": 21
+  },
+  "suicidal_risk": true,
+  "conditions": [
+    "cardiovascular_disease"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 81,
+  "child_pugh": null
+}

@@ -43,6 +43,10 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # роль 4 (Максим): движок клинических правил, сигналы о критических состояниях, разбор выписок
+    'clinical',
+    'alerts',
+    'extraction',
 ]
 
 MIDDLEWARE = [
@@ -140,3 +144,10 @@ STORAGES = {
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Сигналы о критических состояниях (приложение alerts)
+ALERTS = {
+    'ACK_TIMEOUT_MIN': int(os.environ.get('ALERT_ACK_TIMEOUT_MIN', 15)),  # нет отметки врача — повтор
+    'MAX_RETRIES': int(os.environ.get('ALERT_MAX_RETRIES', 2)),           # потом — резервному врачу
+    'CHANNELS': os.environ.get('ALERT_CHANNELS', 'inapp,log').split(','),  # inapp, log, email, telegram
+}

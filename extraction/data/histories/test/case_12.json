@@ -1,0 +1,29 @@
+{
+  "sex": "M",
+  "age": 47,
+  "diagnoses": [
+    "F33.1",
+    "N18"
+  ],
+  "medications": [
+    {
+      "inn": "миртазапин",
+      "dose_mg": 15,
+      "times_per_day": 1
+    }
+  ],
+  "stopped_medications": [
+    "сертралин"
+  ],
+  "scales": {
+    "hamd": 19
+  },
+  "suicidal_risk": true,
+  "conditions": [
+    "renal_failure"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 48,
+  "child_pugh": null
+}

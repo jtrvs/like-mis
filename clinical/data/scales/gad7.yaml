@@ -1,0 +1,25 @@
+code: gad7
+title: GAD-7 (Шкала генерализованного тревожного расстройства)
+period: последние 2 недели
+items: 7
+min_item: 0
+max_item: 3
+answer_labels: [Ни разу, Несколько дней, Более половины дней, Почти каждый день]
+item_labels:
+  - Нервозность, тревога, напряжение
+  - Неспособность остановить или контролировать беспокойство
+  - Чрезмерное беспокойство по разным поводам
+  - Трудно расслабиться
+  - Беспокойство, трудно усидеть на месте
+  - Легко раздражаюсь
+  - Страх, что случится что-то ужасное
+critical_items: []
+severity:
+  - {from: 0, to: 4, code: minimal, label: Минимальная}
+  - {from: 5, to: 9, code: mild, label: Лёгкая}
+  - {from: 10, to: 14, code: moderate, label: Умеренная}
+  - {from: 15, to: 21, code: severe, label: Тяжёлая}
+source:
+  original: Spitzer R.L. et al. A brief measure for assessing generalized anxiety disorder - the GAD-7. Arch Intern Med. 2006;166(10):1092-1097.
+  license: Pfizer; свободное использование, разрешение не требуется (phqscreeners.com)
+  ru_validation: TODO(Алина) — указать публикацию о валидации русской версии

@@ -1,0 +1,40 @@
+{
+  "sex": "M",
+  "age": 41,
+  "diagnoses": [
+    "F41.1",
+    "E11"
+  ],
+  "medications": [
+    {
+      "inn": "эсциталопрам",
+      "dose_mg": 20,
+      "times_per_day": 1
+    },
+    {
+      "inn": "прегабалин",
+      "dose_mg": 75,
+      "times_per_day": 2
+    },
+    {
+      "inn": "метформин",
+      "dose_mg": 500,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [
+    "алпразолам"
+  ],
+  "scales": {
+    "gad7": 18,
+    "hama": 26
+  },
+  "suicidal_risk": false,
+  "conditions": [
+    "diabetes"
+  ],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 88,
+  "child_pugh": null
+}

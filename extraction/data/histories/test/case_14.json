@@ -1,0 +1,20 @@
+{
+  "sex": "F",
+  "age": 28,
+  "diagnoses": [
+    "F41.1"
+  ],
+  "medications": [],
+  "stopped_medications": [
+    "эсциталопрам"
+  ],
+  "scales": {
+    "gad7": 13
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": true,
+  "breastfeeding": false,
+  "egfr": null,
+  "child_pugh": null
+}

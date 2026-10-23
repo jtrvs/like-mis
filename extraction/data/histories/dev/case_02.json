@@ -1,0 +1,25 @@
+{
+  "sex": "M",
+  "age": 34,
+  "diagnoses": [
+    "F41.1"
+  ],
+  "medications": [
+    {
+      "inn": "маритупирдин",
+      "dose_mg": 20,
+      "times_per_day": 2
+    }
+  ],
+  "stopped_medications": [],
+  "scales": {
+    "gad7": 16,
+    "phq9": 8
+  },
+  "suicidal_risk": false,
+  "conditions": [],
+  "pregnant": false,
+  "breastfeeding": false,
+  "egfr": 96,
+  "child_pugh": null
+}
