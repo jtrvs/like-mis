@@ -163,6 +163,8 @@ def run(base, video_dir=None, slow=0):
         dpg.fill("#id_text", text)
         m.click("text=Разобрать текст")
         dpg.wait_for_selector(".import-review")
+        for field in dpg.locator('.import-date-fields input[type=date]').all():
+            field.fill("2026-09-01")
         m.click("text=Перенести отмеченное в карточку")
         dpg.wait_for_selector("text=Сведения из выписки перенесены")
         results.append(m.result(ok=True))

@@ -611,3 +611,9 @@ details.more summary { cursor: pointer; color: var(--brand); margin: 8px 0; }
 .original-document { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.8; padding: 16px; background: var(--paper); border-radius: 10px; max-height: 650px; overflow-y: auto; }
 @media (max-width: 1099px) { .import-start, .import-review { grid-template-columns: 1fr; } .import-original { order: -1; } .original-document { max-height: 260px; } }
 @media (max-width: 600px) { .import-steps { flex-direction: column; gap: 10px; } .import-review .section-heading { align-items: flex-start; flex-wrap: wrap; } .import-actions > * { width: 100%; } .diary-record-header { font-size: 10px; } }
+
+.import-date-fields { padding: 0 12px 14px; }
+.import-date-fields label { font-size: 12px; }
+.import-date-fields input { max-width: 240px; }
+.import-date-fields .errorlist { padding-left: 20px; color: var(--red); font-size: 13px; }
+.import-medication { border-bottom: 1px dashed var(--line); margin-bottom: 12px; }

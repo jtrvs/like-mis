@@ -17,6 +17,7 @@ from extraction.engine.llm import extract as extract_text
 from . import services as S
 from .access import audit, doctor_required, patient_for_doctor, safe_next
 from .forms import ImportForm, NewPatientForm, PrescribeForm, add_conditions
+from .import_review import medication_code, medication_name, prescription_name, review_rows
 
 RISK_ORDER = {"red": 0, "amber": 1, "green": 2}
 COND_LABELS = dict(__import__("web.forms", fromlist=["CONDITION_CHOICES"]).CONDITION_CHOICES)
@@ -189,7 +190,7 @@ def prescribe_aviandr(request, public_id):
         return redirect("doctor_patient", public_id=p.public_id)
     d = loader.drugs()["aviandr"]["dosing"]
     with transaction.atomic():
-        PatientProfile.objects.select_for_update().get(pk=p.pk)  # повторный клик не создаст второе назначение
+        p = PatientProfile.objects.select_for_update().get(pk=p.pk)  # повторный клик не создаст второе назначение
         if Prescription.objects.filter(patient=p, drug_code="aviandr", status="active").exists():
             messages.error(request, "Авиандр уже назначен этому пациенту.")
             return redirect("doctor_patient", public_id=p.public_id)
@@ -275,47 +276,94 @@ def import_history(request, public_id):
     form = ImportForm(request.POST or None)
     data = ms = None
     key = f"import:{p.public_id}"
+    current_rows, stopped_rows = [], []
+    apply_error = False
     if request.method == "POST" and "apply" in request.POST:
-        payload = request.session.get(key)  # извлечённое хранится на сервере, клиенту не доверяем
+        payload = request.session.get(key)
         if not payload:
             messages.error(request, "Сессия разбора устарела — вставьте текст ещё раз.")
             return redirect("import_history", public_id=p.public_id)
-        meds = {m["inn"]: m for m in payload["medications"]}
-        allowed_cond = set(COND_LABELS) | {"hepatic_failure", "renal_failure"}
-        with transaction.atomic():
-            for code in request.POST.getlist("dx"):
-                if code in payload["diagnoses"]:
-                    Diagnosis.objects.get_or_create(patient=p, icd10=code, defaults={
-                        "title": "из выписки", "is_primary": code.startswith("F"), "established_by": request.doctor,
-                        "established_on_visit": False})  # из чужой выписки — не наш очный приём
-            add_conditions(p, [c for c in request.POST.getlist("cond") if c in allowed_cond and c in payload["conditions"]])
-            for inn in request.POST.getlist("med"):
-                m = meds.get(inn)
-                if m and m["dose_mg"] and m["times_per_day"]:
-                    Prescription.objects.create(patient=p, drug_code=inn, drug_name=inn, dose_mg=m["dose_mg"], times_per_day=m["times_per_day"],
-                                                start_date=date.today(), prescribed_by=request.doctor, comment="перенесено из выписки")
-            for inn in request.POST.getlist("stopped"):
-                if inn not in payload["stopped_medications"]:
-                    continue
-                Prescription.objects.create(patient=p, drug_code=inn, drug_name=inn, dose_mg=0, times_per_day=1, start_date=date.today(),
-                                            end_date=date.today(), status="stopped", comment="отменён до обращения (из выписки)")
-            if request.POST.get("egfr") and isinstance(payload.get("egfr"), (int, float)):
-                p.egfr = payload["egfr"]
-            if request.POST.get("child_pugh") and payload.get("child_pugh") in ("A", "B", "C"):
-                p.child_pugh_class = payload["child_pugh"]
-            if request.POST.get("pregnant") and payload.get("pregnant"):
-                p.is_pregnant = True
-            p.save()
-            DoctorDecision.objects.create(doctor=request.doctor, patient=p, kind="accept_recommendation", payload={"import": True})
-        request.session.pop(key, None)
-        messages.success(request, "Сведения из выписки перенесены в карточку.")
-        return redirect("doctor_patient", public_id=p.public_id)
-    if request.method == "POST" and form.is_valid():
+        data = payload
+        form = ImportForm(initial={"text": payload.get("_source_text", "")})
+        current_rows, stopped_rows = review_rows(payload, request.POST)
+        selected = [row for row in current_rows if row["selected"] and row["enabled"]]
+        selected_stopped = [row for row in stopped_rows if row["selected"]]
+        # Проверяем все выбранные строки до любой записи в карточку.
+        valid = [row["form"].is_valid() for row in selected + selected_stopped]
+        apply_error = not all(valid)
+        skipped = 0
+        if not apply_error:
+            allowed_cond = set(COND_LABELS) | {"hepatic_failure", "renal_failure"}
+            with transaction.atomic():
+                # Сериализуем переносы одного пациента, в том числе из разных вкладок.
+                p = PatientProfile.objects.select_for_update().get(pk=p.pk)
+                active = list(p.prescriptions.filter(status="active"))
+                planned = []
+                for row in selected:
+                    m = row["medication"]
+                    name = medication_name(m["inn"])
+                    start = row["form"].cleaned_data["start_date"]
+                    matches = [rx for rx in active if prescription_name(rx) == name]
+                    if matches:
+                        if all(rx.dose_mg == m["dose_mg"] and rx.times_per_day == m["times_per_day"] and rx.start_date == start for rx in matches):
+                            skipped += 1
+                            continue
+                        row["form"].add_error(None, "Этот препарат уже есть в действующих назначениях с другой датой или схемой. Сверьте карточку; импорт не заменяет назначение автоматически.")
+                        apply_error = True
+                    elif any(item[0] == name for item in planned):
+                        row["form"].add_error(None, "Препарат повторяется среди выбранных строк. Оставьте одну подтверждённую схему.")
+                        apply_error = True
+                    else:
+                        planned.append((name, row))
+                if not apply_error:
+                    for code in request.POST.getlist("dx"):
+                        if code in payload["diagnoses"]:
+                            Diagnosis.objects.get_or_create(patient=p, icd10=code, defaults={
+                                "title": "из выписки", "is_primary": code.startswith("F"), "established_by": request.doctor,
+                                "established_on_visit": False})
+                    add_conditions(p, [c for c in request.POST.getlist("cond") if c in allowed_cond and c in payload["conditions"]])
+                    for name, row in planned:
+                        m = row["medication"]
+                        Prescription.objects.create(patient=p, drug_code=medication_code(name), drug_name=m["inn"],
+                            dose_mg=m["dose_mg"], times_per_day=m["times_per_day"],
+                            start_date=row["form"].cleaned_data["start_date"], prescribed_by=request.doctor,
+                            comment="перенесено из выписки; дата подтверждена врачом")
+                    for row in selected_stopped:
+                        name = medication_name(row["name"])
+                        dates = row["form"].cleaned_data
+                        exists = any(prescription_name(rx) == name for rx in p.prescriptions.filter(
+                            status="stopped", start_date=dates["start_date"], end_date=dates["end_date"]))
+                        if exists:
+                            skipped += 1
+                            continue
+                        Prescription.objects.create(patient=p, drug_code=medication_code(name), drug_name=row["name"],
+                            dose_mg=0, times_per_day=1, start_date=dates["start_date"], end_date=dates["end_date"],
+                            status="stopped", prescribed_by=request.doctor,
+                            comment="отменён до обращения (из выписки); даты подтверждены врачом, доза не установлена")
+                    if request.POST.get("egfr") and isinstance(payload.get("egfr"), (int, float)):
+                        p.egfr = payload["egfr"]
+                    if request.POST.get("child_pugh") and payload.get("child_pugh") in ("A", "B", "C"):
+                        p.child_pugh_class = payload["child_pugh"]
+                    if request.POST.get("pregnant") and payload.get("pregnant"):
+                        p.is_pregnant = True
+                    p.save()
+                    DoctorDecision.objects.create(doctor=request.doctor, patient=p, kind="accept_recommendation",
+                        payload={"import": True, "existing_prescriptions_skipped": skipped})
+            if not apply_error:
+                request.session.pop(key, None)
+                messages.success(request, f"Сведения из выписки перенесены в карточку. Уже существующих назначений пропущено: {skipped}.")
+                return redirect("doctor_patient", public_id=p.public_id)
+    if request.method == "POST" and "apply" not in request.POST and form.is_valid():
         t0 = time.perf_counter()
         data = extract_text(form.cleaned_data["text"])
         ms = round((time.perf_counter() - t0) * 1000, 1)
         request.session[key] = {k: v for k, v in data.items() if not k.startswith("_")}
+        request.session[key]["_source_text"] = form.cleaned_data["text"]
+        current_rows, stopped_rows = review_rows(data)
     labels = {**COND_LABELS, "hepatic_failure": "Печёночная недостаточность", "renal_failure": "Почечная недостаточность"}
     conds = [(c, labels.get(c, c)) for c in (data or {}).get("conditions", [])]
     return render(request, "web/doctor/import.html", {"p": p, "form": form, "data": data, "ms": ms, "conds": conds,
+                                                      "current_rows": current_rows, "stopped_rows": stopped_rows, "apply_error": apply_error,
+                                                      "selected_dx": request.POST.getlist("dx"), "selected_cond": request.POST.getlist("cond"),
+                                                      "selected_egfr": request.POST.get("egfr"), "selected_child_pugh": request.POST.get("child_pugh"), "selected_pregnant": request.POST.get("pregnant"),
                                                       "cond_labels": COND_LABELS, "nav": "home", **_nav(request)})

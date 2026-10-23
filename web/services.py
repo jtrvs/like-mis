@@ -37,6 +37,10 @@ def ensure_schedule(prescription, until=None):
     d = start
     tz = timezone.get_current_timezone()
     created = prescription.created_at
+    if created and prescription.comment.startswith("перенесено из выписки"):
+        # Историческая дата нужна для терапии, но старые приёмы мы не наблюдали.
+        # Не создаём задним числом неотмеченные дозы и ложные пропуски.
+        d = max(d, timezone.localtime(created).date())
     while d <= end:
         for t in SLOTS.get(prescription.times_per_day, SLOTS[1]):
             dt = timezone.make_aware(datetime.combine(d, t), tz)
