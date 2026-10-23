@@ -47,6 +47,9 @@ INSTALLED_APPS = [
     'clinical',
     'alerts',
     'extraction',
+    # интерфейсы (Стас, на основе прототипа): модели пациента/врача — черновик для Юли, экраны врача и пациента
+    'core',
+    'web',
 ]
 
 MIDDLEWARE = [
@@ -151,3 +154,11 @@ ALERTS = {
     'MAX_RETRIES': int(os.environ.get('ALERT_MAX_RETRIES', 2)),           # потом — резервному врачу
     'CHANNELS': os.environ.get('ALERT_CHANNELS', 'inapp,log').split(','),  # inapp, log, email, telegram
 }
+
+# --- интерфейсы (ветка stas/ui-prototype) ---
+LANGUAGE_CODE = 'ru-ru'
+TIME_ZONE = 'Europe/Moscow'
+LOGIN_URL = '/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/login/'
+SESSION_COOKIE_AGE = 60 * 60 * 8  # рабочая смена врача

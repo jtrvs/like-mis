@@ -1,0 +1,29 @@
+{% extends "web/patient/base.html" %}
+{% load static %}
+{% block title %}Динамика — Лямбда{% endblock %}
+{% block head %}<script src="{% static 'web/vendor/chart.umd.js' %}" defer></script>{% endblock %}
+{% block heading %}Ваша динамика{% endblock %}
+{% block main %}
+{% if last.phq9 or last.gad7 %}
+<section class="panel">
+  {% if last.phq9 %}<p><b>Депрессия (PHQ-9):</b> {{ last.phq9.total }} — {{ last.phq9.get_severity_display|default:last.phq9.severity }}</p>{% endif %}
+  {% if last.gad7 %}<p><b>Тревога (GAD-7):</b> {{ last.gad7.total }}</p>{% endif %}
+  <div class="chart-box"><canvas id="ch-s" aria-label="Баллы по опросникам"></canvas></div>
+  <p class="small muted">Меньше — лучше. Результаты обсуждаются с врачом, сами по себе они не диагноз.</p>
+</section>
+{% endif %}
+<section class="panel"><h2>Настроение и тревога</h2><div class="chart-box"><canvas id="ch-d" aria-label="Настроение и тревога по дням"></canvas></div></section>
+{{ chart|json_script:"chart-data" }}
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const d = JSON.parse(JSON.parse(document.getElementById("chart-data").textContent));
+  Chart.defaults.font.family = "Golos, system-ui, sans-serif";
+  const mk = (id, sets, max) => { const el = document.getElementById(id); if (!el) return;
+    new Chart(el, { type: "line", data: { labels: [...new Set(sets.flatMap(s => s.data.map(p => p.x)))],
+      datasets: sets.map(s => ({ label: s.label, data: s.data, parsing: {xAxisKey: "x", yAxisKey: "y"}, borderColor: s.c, backgroundColor: s.c, tension: .25, borderDash: s.dash || [] })) },
+      options: { maintainAspectRatio: false, animation: false, plugins: { legend: { position: "bottom" } }, scales: { y: { min: 0, max } } } }); };
+  mk("ch-s", [{label: "PHQ-9", data: d.phq9, c: "#1F5F7A"}, {label: "GAD-7", data: d.gad7, c: "#9A6200", dash: [6, 4]}], 27);
+  mk("ch-d", [{label: "Настроение", data: d.mood, c: "#2F7D55"}, {label: "Тревога", data: d.anxiety, c: "#B42318", dash: [6, 4]}], 10);
+});
+</script>
+{% endblock %}

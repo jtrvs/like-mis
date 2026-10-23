@@ -1,0 +1,14 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Врач — Лямбда{% endblock %}
+{% block heading %}{% if link %}{{ link.doctor.user.get_full_name }}{% else %}Врач{% endif %}{% endblock %}
+{% block main %}
+<p class="small muted">Врач отвечает в рабочее время. Если вам очень плохо сейчас — нажмите «Мне плохо» вверху.</p>
+{% if extra_visit %}<div class="flash warning">Вопросов много — возможно, стоит записаться на дополнительный приём. Спросите врача.</div>{% endif %}
+<div class="thread" style="max-height:none">
+  {% for m in thread %}<div class="msg {% if m.sender_id == request.user.id %}mine{% endif %}">{{ m.text|linebreaksbr }}<time>{{ m.created_at|date:"d.m H:i" }}</time></div>{% empty %}<p class="muted">Здесь можно задать вопрос о лечении.</p>{% endfor %}
+</div>
+<form method="post" style="margin-top:12px">{% csrf_token %}
+  <label for="t" class="sr">Сообщение</label><textarea id="t" name="text" required placeholder="Напишите врачу" style="min-height:72px"></textarea>
+  <p style="margin-top:8px"><button class="btn block">Отправить</button></p>
+</form>
+{% endblock %}

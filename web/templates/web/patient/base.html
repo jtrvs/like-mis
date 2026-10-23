@@ -1,0 +1,19 @@
+{% extends "web/base.html" %}
+{% block body %}
+<div class="pt">
+  <div class="pt-top">
+    <div class="hello">{% block heading %}{% endblock %}</div>
+    <a class="sos" href="/me/help/">Мне плохо</a>
+  </div>
+  {% include "web/_flash.html" %}
+  {% block main %}{% endblock %}
+</div>
+<nav class="tabs" aria-label="Разделы">
+  <a href="/me/" {% if tab == "home" %}aria-current="page"{% endif %}>Сегодня</a>
+  <a href="/me/meds/" {% if tab == "meds" %}aria-current="page"{% endif %}>Лекарства</a>
+  <a href="/me/progress/" {% if tab == "progress" %}aria-current="page"{% endif %}>Динамика</a>
+  <a href="/me/chat/" {% if tab == "chat" %}aria-current="page"{% endif %}>Врач</a>
+  <a href="/me/help/" {% if tab == "help" %}aria-current="page"{% endif %}>Помощь</a>
+</nav>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
+{% endblock %}

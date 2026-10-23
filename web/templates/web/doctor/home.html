@@ -1,0 +1,32 @@
+{% extends "web/doctor/base.html" %}
+{% block title %}Пациенты — Лямбда{% endblock %}
+{% block main %}
+<div class="page-head">
+  <div><h1>Пациенты</h1><p class="muted" style="margin:0">Сверху — те, кому нужно внимание сейчас</p></div>
+  <a class="btn" href="/doctor/patient/new/">Добавить пациента</a>
+</div>
+{% if alerts %}
+<section aria-labelledby="sig-h" style="margin-bottom:24px">
+  <h2 id="sig-h">Новые сигналы</h2>
+  {% for a in alerts|slice:":5" %}{% include "web/doctor/_alert.html" with show_patient=1 %}{% endfor %}
+  {% if alerts|length > 5 %}<a href="/doctor/alerts/">Все сигналы ({{ alerts|length }})</a>{% endif %}
+</section>
+{% endif %}
+<table class="list">
+  <thead><tr><th>Пациент</th><th>Состояние</th><th class="hide-m">Диагноз</th><th>PHQ-9 / GAD-7</th><th class="hide-m">Приём препаратов</th><th class="hide-m">Последняя запись</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr class="row-{{ r.risk }}">
+    <td><a class="name" href="/doctor/patient/{{ r.p.public_id }}/">{{ r.p.last_name }} {{ r.p.first_name }} {{ r.p.middle_name }}</a><div class="small muted">{{ r.age }} лет{% if not r.joined %}, ещё не подключился (код {{ r.code }}){% endif %}</div></td>
+    <td><span class="light {{ r.risk }}">{% if r.risk == "red" %}Нужно внимание{% elif r.risk == "amber" %}Наблюдать{% else %}Стабильно{% endif %}</span>{% if r.alerts %}<div class="small muted">сигналов: {{ r.alerts }}</div>{% endif %}</td>
+    <td class="hide-m">{% if r.dx %}<b>{{ r.dx.icd10 }}</b> <span class="small muted">{{ r.dx.title|truncatechars:40 }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="nowrap">{{ r.phq.total|default:"—" }} / {{ r.gad.total|default:"—" }}</td>
+    <td class="hide-m">{% if r.adh %}<div class="meter" title="{{ r.adh.pct }}%"><span style="width:{{ r.adh.pct }}%"></span></div><span class="small">{{ r.adh.pct }}% за 2 недели</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="hide-m small">{{ r.last_seen|date:"d.m H:i"|default:"—" }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6">Пациентов пока нет. <a href="/doctor/patient/new/">Создайте карточку</a> и передайте пациенту код для подключения.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

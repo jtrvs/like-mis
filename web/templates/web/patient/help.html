@@ -1,0 +1,36 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Помощь — Лямбда{% endblock %}
+{% block heading %}Помощь рядом{% endblock %}
+{% block main %}
+{% if crisis %}
+<div class="crisis" role="alert">
+  <h2 style="margin-bottom:6px">Вы не один</h2>
+  <p>Ваш врач уже получил сообщение. Пока он связывается с вами, позвоните тому, кому доверяете, или на линию помощи — там ответят прямо сейчас.</p>
+  <p style="margin:0">Если есть угроза жизни — звоните <a href="tel:112"><b>112</b></a>.</p>
+</div>
+{% endif %}
+{% if contacts %}
+<section><h2>Мои люди</h2>
+  {% for c in contacts %}{% if c.patient_may_call %}
+  <div class="hotline"><div><b>{{ c.name }}</b><div class="small muted">{{ c.relation }}{% if c.doctor_may_call %}{% if c.relation %}, {% endif %}врач может позвонить{% endif %}</div></div>
+    <a href="tel:{{ c.phone }}">Позвонить</a></div>
+  {% endif %}{% endfor %}
+</section>
+{% endif %}
+<section style="margin-top:16px"><h2>Линии помощи</h2>
+  {% for name, phone, note in hotlines %}
+  <div class="hotline"><div><b>{{ name }}</b><div class="small muted">{{ note }}</div></div><a href="tel:{{ phone|cut:' '|cut:'-' }}">{{ phone }}</a></div>
+  {% endfor %}
+</section>
+<details class="more panel" style="margin-top:16px" {% if not contacts %}open{% endif %}><summary>Добавить близкого человека</summary>
+  <form method="post">{% csrf_token %}
+    <label for="id_name">Имя</label>{{ form.name }}
+    <label for="id_relation">Кем приходится</label>{{ form.relation }}
+    <label for="id_phone">Телефон</label>{{ form.phone }}
+    <label class="check">{{ form.patient_may_call }} <span>{{ form.patient_may_call.label }}</span></label>
+    <label class="check">{{ form.doctor_may_call }} <span>{{ form.doctor_may_call.label }}</span></label>
+    <p><button class="btn">Добавить</button></p>
+  </form>
+  {% for c in contacts %}<form method="post" action="/me/help/contact/{{ c.id }}/delete/" style="display:flex;justify-content:space-between;align-items:center;padding:6px 0">{% csrf_token %}<span>{{ c.name }}, {{ c.phone }}</span><button class="btn ghost small">Удалить</button></form>{% endfor %}
+</details>
+{% endblock %}

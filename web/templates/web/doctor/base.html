@@ -1,0 +1,17 @@
+{% extends "web/base.html" %}
+{% block body %}
+<div class="doc">
+  <nav class="doc-nav" aria-label="Разделы">
+    <div class="logo">Лямбда<small>кабинет врача</small></div>
+    <a href="/doctor/" {% if nav == "home" %}aria-current="page"{% endif %}>Пациенты</a>
+    <a href="/doctor/alerts/" {% if nav == "alerts" %}aria-current="page"{% endif %}>Сигналы {% if open_alerts %}<span class="count">{{ open_alerts }}</span>{% endif %}</a>
+    <a href="/doctor/patient/new/" {% if nav == "new" %}aria-current="page"{% endif %}>Новый пациент</a>
+    <div class="who">{{ request.user.get_full_name }}<br>{{ request.user.doctor.get_specialty_display }}
+      <form method="post" action="/logout/">{% csrf_token %}<button class="btn ghost small" style="color:#9FB2BC;border-color:#4A5A64;margin-top:8px">Выйти</button></form></div>
+  </nav>
+  <main class="doc-main">
+    {% include "web/_flash.html" %}
+    {% block main %}{% endblock %}
+  </main>
+</div>
+{% endblock %}

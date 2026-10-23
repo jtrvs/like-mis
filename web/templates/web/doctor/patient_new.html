@@ -1,0 +1,33 @@
+{% extends "web/doctor/base.html" %}
+{% block title %}Новый пациент — Лямбда{% endblock %}
+{% block main %}
+<h1>Новый пациент</h1>
+<p class="muted">После сохранения появится код. Пациент вводит его при регистрации — и его записи сразу попадают в эту карточку.</p>
+<form method="post" class="panel" style="max-width:720px" novalidate>{% csrf_token %}
+  <div class="field-row">
+    <div><label for="id_last_name">Фамилия</label>{{ form.last_name }}{{ form.last_name.errors }}</div>
+    <div><label for="id_first_name">Имя</label>{{ form.first_name }}{{ form.first_name.errors }}</div>
+    <div><label for="id_middle_name">Отчество</label>{{ form.middle_name }}</div>
+  </div>
+  <div class="field-row">
+    <div><label for="id_birth_date">Дата рождения</label>{{ form.birth_date }}{{ form.birth_date.errors }}</div>
+    <div><label for="id_sex">Пол</label>{{ form.sex }}</div>
+  </div>
+  <div class="field-row">
+    <div><label for="id_icd10">Диагноз, код МКБ-10</label>{{ form.icd10 }}{{ form.icd10.errors }}</div>
+    <div style="flex:3 1 300px"><label for="id_dx_title">Формулировка</label>{{ form.dx_title }}</div>
+  </div>
+  <h3 style="margin-top:20px">Для проверки безопасности терапии</h3>
+  <div class="field-row">
+    <div><label for="id_egfr">СКФ, мл/мин/1,73 м²</label>{{ form.egfr }}{{ form.egfr.errors }}</div>
+    <div><label for="id_child_pugh_class">Печёночная недостаточность, Чайлд-Пью</label>{{ form.child_pugh_class }}</div>
+  </div>
+  <label class="check">{{ form.is_pregnant }} <span>Беременность</span></label>
+  <label class="check">{{ form.is_breastfeeding }} <span>Грудное вскармливание</span></label>
+  <label class="check">{{ form.post_covid }} <span>Тревога связана с перенесённым COVID-19</span></label>
+  <fieldset style="border:0;padding:0;margin:12px 0 0"><legend style="font-weight:500">Сопутствующие состояния</legend>
+    {% for c in form.conditions %}<label class="check">{{ c.tag }} <span>{{ c.choice_label }}</span></label>{% endfor %}
+  </fieldset>
+  <p style="margin-top:20px"><button class="btn">Создать карточку и получить код</button></p>
+</form>
+{% endblock %}

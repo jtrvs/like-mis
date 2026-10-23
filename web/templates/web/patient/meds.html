@@ -1,0 +1,11 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Лекарства — Лямбда{% endblock %}
+{% block heading %}Лекарства{% endblock %}
+{% block main %}
+{% for r in rx %}<div class="task" style="display:block"><div class="t">{{ r.drug_name }}</div><div class="s">{{ r.dose_mg|floatformat:"-1" }} мг, {{ r.times_per_day }} раз в день{% if r.drug_code == "aviandr" %}, за 30 минут до еды. Без алкоголя, не садиться за руль{% endif %}</div></div>
+{% empty %}<p class="muted">Врач пока не назначил лекарств.</p>{% endfor %}
+{% if adh %}<p class="small muted">За 2 недели принято {{ adh.taken }} из {{ adh.total }} ({{ adh.pct }}%)</p>{% endif %}
+<section class="panel"><h2>Дневник приёма</h2>
+  {% for d in doses %}{% include "web/patient/_dose.html" %}{% empty %}<p class="muted">Нет запланированных приёмов.</p>{% endfor %}
+</section>
+{% endblock %}
