@@ -1,15 +1,37 @@
 {% extends "web/base.html" %}
-{% block title %}Вход — Лямбда{% endblock %}
+{% block title %}Вход в кабинет — Лямбда{% endblock %}
 {% block body %}
-<main class="auth">
-  <div class="mark">Лямбда</div>
-  <p class="muted">Наблюдение пациентов с тревогой и депрессией между приёмами</p>
-  {% if form.errors %}<div class="flash error">Неверный логин или пароль.</div>{% endif %}
-  <form method="post">{% csrf_token %}
-    <label for="id_username">Логин</label><input type="text" name="username" id="id_username" autocomplete="username" required autofocus>
-    <label for="id_password">Пароль</label><input type="password" name="password" id="id_password" autocomplete="current-password" required>
-    <p style="margin-top:20px"><button class="btn block" type="submit">Войти</button></p>
-  </form>
-  <p class="small muted">Пациент? Врач выдаст вам код — <a href="/join/">зарегистрируйтесь по коду</a>.</p>
+<main class="login-page" id="main-content">
+  <section class="login-intro" aria-labelledby="intro-title">
+    <a class="brand-lockup" href="/login/" aria-label="Лямбда — вход в кабинет"><span class="brand-symbol">{% include "web/_icon.html" with name="compass" %}</span><span><strong>Лямбда</strong><small>Клинический компас</small></span></a>
+    <div class="intro-copy">
+      <span class="eyebrow">Врач и пациент на связи</span>
+      <h1 id="intro-title">Наблюдение <br>между приёмами</h1>
+      <p>Самочувствие, результаты опросников и план лечения — в одном месте.</p>
+      <div class="care-illustration" aria-hidden="true">
+        <div class="care-orbit"></div>
+        <div class="care-note"><span class="soft-icon mint">{% include "web/_icon.html" with name="heart" %}</span><div><b>Запись о самочувствии</b><span>Пациент делится, как прошёл день</span></div><span class="care-check">{% include "web/_icon.html" with name="check" %}</span></div>
+        <div class="care-connector"></div>
+        <div class="care-note doctor-note"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><b>Карточка у врача</b><span>Врач видит изменения и принимает решение</span></div></div>
+      </div>
+    </div>
+    <p class="intro-footnote">Помощник в наблюдении за тревожной и депрессивной симптоматикой</p>
+  </section>
+  <section class="login-form-section" aria-labelledby="login-title">
+    <div class="login-form-card">
+      <span class="eyebrow">Личный кабинет</span><h2 id="login-title">С возвращением</h2>
+      <p class="muted">Введите логин и пароль. Ваш кабинет откроется автоматически.</p>
+      {% include "web/_flash.html" %}
+      {% if form.errors %}<div class="flash error" role="alert" id="login-error">Неверный логин или пароль. Проверьте данные и попробуйте ещё раз.</div>{% endif %}
+      <form method="post">{% csrf_token %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <label for="id_username">Логин</label><input type="text" name="username" id="id_username" value="{{ form.username.value|default_if_none:'' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required{% if form.errors %} aria-describedby="login-error"{% endif %}>
+        <label for="id_password">Пароль</label><input type="password" name="password" id="id_password" autocomplete="current-password" required{% if form.errors %} aria-describedby="login-error"{% endif %}>
+        <button class="btn block login-submit" type="submit">Войти в кабинет {% include "web/_icon.html" with name="arrow" %}</button>
+      </form>
+      <div class="join-note"><span class="soft-icon lavender">{% include "web/_icon.html" with name="plus" %}</span><div><b>Впервые здесь?</b><p>Если врач выдал код, <a href="/join/">подключитесь по приглашению</a>.</p></div></div>
+      <p class="login-footnote">Изменения плана лечения подтверждает ваш врач.</p>
+    </div>
+  </section>
 </main>
 {% endblock %}

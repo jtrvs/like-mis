@@ -2,10 +2,25 @@
 {% block title %}Лекарства — Лямбда{% endblock %}
 {% block heading %}Лекарства{% endblock %}
 {% block main %}
-{% for r in rx %}<div class="task" style="display:block"><div class="t">{{ r.drug_name }}</div><div class="s">{{ r.dose_mg|floatformat:"-1" }} мг, {{ r.times_per_day }} раз в день{% if r.drug_code == "aviandr" %}, за 30 минут до еды. Без алкоголя, не садиться за руль{% endif %}</div></div>
-{% empty %}<p class="muted">Врач пока не назначил лекарств.</p>{% endfor %}
-{% if adh %}<p class="small muted">За 2 недели принято {{ adh.taken }} из {{ adh.total }} ({{ adh.pct }}%)</p>{% endif %}
-<section class="panel"><h2>Дневник приёма</h2>
-  {% for d in doses %}{% include "web/patient/_dose.html" %}{% empty %}<p class="muted">Нет запланированных приёмов.</p>{% endfor %}
+<p class="page-description">Назначения врача и ваши отметки о приёме.</p>
+<section class="panel medication-today" aria-labelledby="h-today-doses">
+  <div class="section-heading"><h2 id="h-today-doses">Сегодня</h2><span class="soft-icon mint">{% include "web/_icon.html" with name="pill" %}</span></div>
+  <p class="small muted">Отметьте каждый приём. «Пропущено» и отсутствие отметки — разные состояния.</p>
+  {% for d in today_doses %}{% include "web/patient/_dose.html" %}{% empty %}<p class="empty-note">На сегодня приёмов нет.</p>{% endfor %}
 </section>
+<section aria-labelledby="h-prescriptions" class="patient-section">
+  <h2 id="h-prescriptions">Что назначено</h2>
+  {% for r in rx %}
+  <article class="panel medication-plan">
+    <div class="medication-title"><span class="soft-icon lavender">{% include "web/_icon.html" with name="pill" %}</span><div><h3>{{ r.drug_name }}</h3><p>{{ r.dose_mg|floatformat:"-1" }} мг · {{ r.times_per_day }} раз в день</p></div></div>
+    <p class="small muted">Начало приёма: {{ r.start_date|date:"d.m.Y" }}</p>
+    {% if r.comment %}<div class="prescriber-note"><b>Комментарий врача</b><p>{{ r.comment }}</p></div>{% endif %}
+    {% if r.drug_code == "aviandr" %}<p class="medication-caution">{% include "web/_icon.html" with name="warning" %}<span>За 30 минут до еды. Без алкоголя, не садиться за руль.</span></p>{% endif %}
+  </article>
+  {% empty %}<div class="panel empty-note">Врач пока не назначил лекарств.</div>{% endfor %}
+</section>
+{% if adh %}<section class="panel adherence-summary"><h2>Ваши отметки за 2 недели</h2><p><strong>{{ adh.pct }}%</strong> · принято {{ adh.taken }} из {{ adh.total }}</p><div class="meter"><span style="width:{{ adh.pct }}%"></span></div><p class="small muted">Пропущено: {{ adh.missed }} · Не отмечено: {{ adh.unmarked }}. Сводка обновляется при открытии страницы.</p></section>{% endif %}
+{% if upcoming_doses %}<section class="panel"><h2>Ближайшие приёмы после сегодня</h2>{% for d in upcoming_doses %}{% include "web/patient/_dose.html" %}{% endfor %}</section>{% endif %}
+{% if past_doses %}<details class="panel medication-history"><summary>История за предыдущие 6 дней</summary>{% for d in past_doses %}{% include "web/patient/_dose.html" %}{% endfor %}</details>{% endif %}
+<p class="small muted">Менять схему лечения нужно вместе с врачом. <a href="/me/chat/">Написать врачу</a></p>
 {% endblock %}

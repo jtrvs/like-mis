@@ -1,32 +1,36 @@
 {% extends "web/doctor/base.html" %}
 {% block title %}Загрузка выписки — Лямбда{% endblock %}
 {% block main %}
-<p><a href="/doctor/patient/{{ p.public_id }}/">← {{ p.last_name }} {{ p.first_name }}</a></p>
-<h1>Загрузка выписки</h1>
-<p class="muted">Вставьте текст в любом формате: эпикриз, запись приёма, направление. Система найдёт диагнозы, препараты, шкалы и факторы риска, а вы отметите, что перенести в карточку.</p>
+<a class="text-action back-link" href="/doctor/patient/{{ p.public_id }}/">← К карточке: {{ p.last_name }} {{ p.first_name }}</a>
+<header class="import-heading"><div><p class="eyebrow">Данные пациента</p><h1>Загрузка выписки</h1><p class="muted">{{ p.last_name }} {{ p.first_name }} {{ p.middle_name }}</p></div><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span></header>
+<ol class="import-steps" aria-label="Этапы переноса выписки"><li {% if not data %}aria-current="step"{% endif %}><span>1</span> Вставьте текст</li><li {% if data %}aria-current="step"{% endif %}><span>2</span> Проверьте найденное</li><li><span>3</span> Подтвердите перенос</li></ol>
 {% if not data %}
-<form method="post" class="panel">{% csrf_token %}
+<div class="import-start"><form method="post" class="panel">{% csrf_token %}
+  <h2>Текст документа</h2><p class="small muted">Скопируйте текст эпикриза, записи приёма или направления. Убедитесь, что документ относится к пациенту в заголовке. Загрузка PDF и фотографий здесь не предусмотрена.</p>
+  {% if form.errors %}<div class="flash error" role="alert">Вставьте текст для разбора. {{ form.text.errors }}</div>{% endif %}
   <label for="id_text">Текст выписки или истории болезни</label>{{ form.text }}
-  <p style="margin-top:12px"><button class="btn">Разобрать текст</button></p>
-</form>
+  <div class="import-actions"><button class="btn">Разобрать текст</button><a class="btn ghost" href="/doctor/patient/{{ p.public_id }}/">Вернуться в карточку</a></div>
+</form><aside class="panel import-explanation"><span class="soft-icon mint">{% include "web/_icon.html" with name="shield" %}</span><h2>Сначала проверка</h2><p>На следующем шаге появятся найденные сведения. Сверьте их с исходным текстом и снимите отметки с того, что не нужно переносить.</p><p>До подтверждения карточка пациента не изменится. Система может пропустить сведения или разобрать их неверно.</p></aside></div>
 {% else %}
-<form method="post" class="panel">{% csrf_token %}
+<div class="import-review"><form method="post" class="panel">{% csrf_token %}
   <input type="hidden" name="apply" value="1">
-  <h2>Найдено <span class="muted">за {{ ms }} мс</span></h2>
+  <div class="section-heading"><h2>Проверьте найденные сведения</h2><span class="status-badge neutral">Ещё не сохранено</span></div>
+  <p class="small muted">В карточку попадут только отмеченные сведения. Сверьте ФИО пациента и проверьте, к какому времени относятся назначения и результаты.</p>
   {% if data.suicidal_risk %}<div class="sig critical"><span class="tag">Срочно</span><div class="title">В тексте есть указания на суицидальный риск</div><div class="meta">Проверьте формулировку в исходном тексте</div></div>{% endif %}
-  <h3>Диагнозы</h3>
-  {% for c in data.diagnoses %}<label class="check"><input type="checkbox" name="dx" value="{{ c }}" checked> <span>{{ c }}</span></label>{% empty %}<p class="muted">Не найдено</p>{% endfor %}
-  <h3>Текущие препараты</h3>
-  {% for m in data.medications %}<label class="check"><input type="checkbox" name="med" value="{{ m.inn }}" {% if m.dose_mg and m.times_per_day %}checked{% else %}disabled{% endif %}> <span>{{ m.inn }} — {{ m.dose_mg|default:"доза ?" }} мг × {{ m.times_per_day|default:"?" }} р/сут{% if not m.dose_mg or not m.times_per_day %} (уточните вручную){% endif %}</span></label>{% empty %}<p class="muted">Не найдено</p>{% endfor %}
-  {% if data.stopped_medications %}<h3>Отменённые ранее</h3>
-  {% for s in data.stopped_medications %}<label class="check"><input type="checkbox" name="stopped" value="{{ s }}" checked> <span>{{ s }}</span></label>{% endfor %}{% endif %}
-  <h3>Факторы для проверки безопасности</h3>
+  <section class="import-group"><h3>Диагнозы</h3>
+  {% for c in data.diagnoses %}<label class="check"><input type="checkbox" name="dx" value="{{ c }}" checked> <span>{{ c }}</span></label>{% empty %}<p class="empty-note">Не найдены. Это не означает, что диагнозов нет.</p>{% endfor %}</section>
+  <section class="import-group"><h3>Текущие препараты</h3>
+  {% for m in data.medications %}<label class="check"><input type="checkbox" name="med" value="{{ m.inn }}" {% if m.dose_mg and m.times_per_day %}checked{% else %}disabled{% endif %}> <span><b>{{ m.inn }}</b> — {{ m.dose_mg|default:"доза не указана" }} мг × {{ m.times_per_day|default:"кратность не указана" }} р/сут{% if not m.dose_mg or not m.times_per_day %}<small class="import-missing">Нельзя перенести: не хватает дозы или кратности. Уточните сведения отдельно.</small>{% endif %}</span></label>{% empty %}<p class="empty-note">Не найдены.</p>{% endfor %}
+  {% if data.medications %}<p class="small muted">При переносе начало приёма будет записано сегодняшней датой. Сверьте её с выпиской; исторические даты автоматически не переносятся.</p>{% endif %}</section>
+  {% if data.stopped_medications %}<section class="import-group"><h3>Отменённые ранее препараты</h3>{% for s in data.stopped_medications %}<label class="check"><input type="checkbox" name="stopped" value="{{ s }}" checked> <span>{{ s }}</span></label>{% endfor %}<p class="small muted">Дата отмены будет записана как сегодняшняя. Историческая дата из выписки автоматически не переносится.</p></section>{% endif %}
+  <section class="import-group"><h3>Факторы для проверки безопасности</h3>
   {% for code, label in conds %}<label class="check"><input type="checkbox" name="cond" value="{{ code }}" checked> <span>{{ label }}</span></label>{% endfor %}
   {% if data.egfr %}<label class="check"><input type="checkbox" name="egfr" value="1" checked> <span>СКФ {{ data.egfr }}</span></label>{% endif %}
   {% if data.child_pugh %}<label class="check"><input type="checkbox" name="child_pugh" value="1" checked> <span>Чайлд-Пью {{ data.child_pugh }}</span></label>{% endif %}
   {% if data.pregnant %}<label class="check"><input type="checkbox" name="pregnant" value="1" checked> <span>Беременность</span></label>{% endif %}
-  {% if data.scales %}<h3>Шкалы в тексте</h3><p>{% for k, v in data.scales.items %}{{ k|upper }}: {{ v }}{% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
-  <p style="margin-top:16px"><button class="btn">Перенести отмеченное в карточку</button> <a class="btn ghost" href="">Разобрать другой текст</a></p>
-</form>
+  {% if not conds and not data.egfr and not data.child_pugh and not data.pregnant %}<p class="empty-note">Не найдены. Проверьте исходный текст.</p>{% endif %}</section>
+  {% if data.scales %}<section class="import-group"><h3>Шкалы в тексте</h3><p>{% for k, v in data.scales.items %}{{ k|upper }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</p><p class="small muted">Показаны для сверки. В историю опросников эти баллы автоматически не переносятся.</p></section>{% endif %}
+  <div class="import-actions"><button class="btn">Перенести отмеченное в карточку</button><a class="btn ghost" href="/doctor/patient/{{ p.public_id }}/import/">Разобрать другой текст</a></div>
+</form><aside class="panel import-original"><h2>Исходный текст</h2><p class="small muted">Сверьте с ним выделенные сведения до подтверждения.</p><div class="original-document" tabindex="0" aria-label="Исходный текст выписки, область прокрутки">{{ form.text.value|default_if_none:"" }}</div></aside></div>
 {% endif %}
 {% endblock %}

@@ -70,7 +70,7 @@ def run(base, video_dir=None, slow=0):
         pg = ctx.new_page()
         login(pg, base, "anna")
         m = Meter(pg, "Пациент: ежедневная отметка состояния")
-        m.click("text=Как вы сегодня?")
+        m.click("a[href='/me/checkin/']")
         m.click("label[for=m7]")
         m.click("label[for=a3]")
         m.fill("#sleep", "7")
@@ -121,6 +121,7 @@ def run(base, video_dir=None, slow=0):
 
         # 5. Психиатр: открыть сигнал, отметить реакцию
         m = Meter(dpg, "Психиатр: отреагировать на срочный сигнал")
+        m.click(".alert-summary.critical .text-action")
         m.fill(".sig.critical input[name=resolution]", "Позвонила, договорились о приёме завтра")
         m.click(".sig.critical button")
         dpg.wait_for_selector(".flash")
@@ -128,7 +129,7 @@ def run(base, video_dir=None, slow=0):
 
         # 6. Психиатр: новый пациент с ГТР -> назначение Авиандра (зелёный)
         m = Meter(dpg, "Психиатр: новый пациент с ГТР и назначение Авиандра")
-        m.click("text=Добавить пациента")
+        m.click("a[href='/doctor/patient/new/']")
         m.fill("#id_last_name", "Тестова")
         m.fill("#id_first_name", "Ольга")
         m.fill("#id_birth_date", "1990-04-12")
@@ -161,7 +162,7 @@ def run(base, video_dir=None, slow=0):
         m.actions += 1  # вставка из буфера — одно действие
         dpg.fill("#id_text", text)
         m.click("text=Разобрать текст")
-        dpg.wait_for_selector("text=Найдено")
+        dpg.wait_for_selector(".import-review")
         m.click("text=Перенести отмеченное в карточку")
         dpg.wait_for_selector("text=Сведения из выписки перенесены")
         results.append(m.result(ok=True))

@@ -1,15 +1,16 @@
 {% extends "web/doctor/base.html" %}
 {% load static %}
 {% block title %}{{ p.last_name }} {{ p.first_name }} — Лямбда{% endblock %}
-{% block head %}<script src="{% static 'web/vendor/chart.umd.js' %}" defer></script>{% endblock %}
+{% block head %}<script src="{% static 'web/vendor/chart.umd.js' %}" defer></script><script src="{% static 'web/patient-charts.js' %}" defer></script>{% endblock %}
 {% block main %}
 {% if via_escalation %}<div class="flash warning">Вы открыли карточку как резервный врач: ведущий врач {{ link.doctor.user.get_full_name }} не отреагировал на срочный сигнал. Доступ временный — до закрытия сигнала.</div>{% endif %}
+<a class="text-action back-link" href="/doctor/">← Все пациенты</a>
 <header class="card-head">
   <div>
     <h1>{{ p.last_name }} {{ p.first_name }} {{ p.middle_name }}</h1>
     <div class="facts">
       <span><b>{{ age }}</b> лет, {{ p.get_sex_display|lower }}</span>
-      {% for d in dx %}<span><b>{{ d.icd10 }}</b> {{ d.title|truncatechars:48 }}</span>{% endfor %}
+      {% for d in dx %}<span><b>{{ d.icd10 }}</b> {{ d.title }}</span>{% endfor %}
       {% if p.is_pregnant %}<span><b>беременность</b></span>{% endif %}
       {% if p.post_covid %}<span>после COVID-19</span>{% endif %}
       {% if p.egfr %}<span>СКФ <b>{{ p.egfr|floatformat:0 }}</b></span>{% endif %}
@@ -17,23 +18,29 @@
       {% for c in conds %}<span>{{ c }}</span>{% endfor %}
     </div>
   </div>
-  <div style="text-align:right">
+  <div class="card-tools">
     <a class="btn ghost small" href="/doctor/patient/{{ p.public_id }}/import/">Загрузить выписку</a>
     {% if not p.user_id %}<div class="small muted" style="margin-top:8px">Код для пациента: <b style="color:var(--ink);font-size:16px">{{ link.invite_code }}</b></div>{% endif %}
   </div>
 </header>
 
-<div class="cols">
-<div>
-  {% if alerts %}
-  <section class="panel" aria-labelledby="h-alerts">
-    <h2 id="h-alerts">Сигналы</h2>
-    {% for a in alerts %}{% include "web/doctor/_alert.html" %}{% endfor %}
-  </section>
-  {% endif %}
-
+<nav class="card-sections" aria-label="Разделы карточки">
+  {% if alerts %}<a href="#h-alerts">Сигналы <span>{{ alerts|length }}</span></a>{% endif %}
+  <a href="#h-route">Решения врача</a><a href="#h-rx">Терапия</a>
+  <a href="#h-dyn">Динамика</a><a href="#messages">Сообщения</a>
+</nav>
+{% if alerts %}
+<section class="panel patient-alerts" aria-labelledby="h-alerts">
+  <div class="section-heading"><h2 id="h-alerts">Сигналы пациента</h2><span class="small muted">{{ alerts|length }} открытых</span></div>
+  <p class="small muted">Отметка о просмотре фиксирует вашу реакцию. Она не заменяет помощь пациенту.</p>
+  {% for a in alerts %}{% include "web/doctor/_alert.html" %}{% endfor %}
+</section>
+{% endif %}
+<div class="patient-card-grid">
+<div class="clinical-column">
+  <div class="column-label">{% include "web/_icon.html" with name="shield" %} Решения и лечение</div>
   <section class="panel" aria-labelledby="h-route">
-    <h2 id="h-route">Консультация психиатра <span class="muted">по шкалам и записям пациента</span></h2>
+    <h2 id="h-route">{% if is_psychiatrist %}Оценка состояния{% else %}Консультация психиатра{% endif %}</h2><p class="small muted">По шкалам и записям пациента</p>
     {% if referral_done and not referrals %}
       <div class="sig ok"><span class="tag">Оформлено</span><div class="title">Направление к психиатру оформлено {{ referral_done.created_at|date:"d.m.Y" }}</div>
         <div class="meta">Срочность: {{ referral_done.get_urgency_display|lower }}. Система продолжает отслеживать состояние.</div></div>
@@ -67,7 +74,7 @@
       </div>
       {% endwith %}
     {% else %}
-      <div class="sig ok"><span class="tag">Не требуется</span><div class="title">Оснований для направления нет</div><div class="meta">Проверено по PHQ-9, GAD-7, ответу на терапию и записям пациента</div></div>
+      <div class="sig ok"><span class="tag">По доступным данным</span><div class="title">Система не выявила оснований для направления</div><div class="meta">Проверка учитывает заполненные шкалы, ответ на терапию и записи пациента. Отсутствие сигнала не заменяет оценку врача.</div></div>
     {% endif %}
   </section>
 
@@ -99,9 +106,9 @@
   </section>
 
   <section class="panel" aria-labelledby="h-rx">
-    <h2 id="h-rx">Терапия{% if adh %} <span class="muted">приём за 2 недели: {{ adh.pct }}%, пропущено {{ adh.missed }}, не отмечено {{ adh.unmarked }}</span>{% endif %}</h2>
+    <h2 id="h-rx">Текущая терапия</h2>{% if adh %}<p class="small muted">Отмеченный приём за 2 недели: {{ adh.pct }}%. Пропущено: {{ adh.missed }} · Не отмечено: {{ adh.unmarked }}</p>{% endif %}
     {% for r in rx %}
-      <div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">
+      <div class="prescription-row">
         <div><b>{{ r.drug_name }}</b> {{ r.dose_mg|floatformat:"-1" }} мг × {{ r.times_per_day }} р/сут<div class="small muted">с {{ r.start_date|date:"d.m.Y" }}{% if r.off_label %}, вне инструкции{% endif %}{% if r.comment %}. {{ r.comment }}{% endif %}</div></div>
         <form method="post" action="/doctor/patient/{{ p.public_id }}/rx/{{ r.id }}/stop/">{% csrf_token %}<button class="btn ghost small">Отменить</button></form>
       </div>
@@ -118,19 +125,25 @@
   {% endif %}
 </div>
 
-<div>
+<div class="observation-column">
+  <div class="column-label">{% include "web/_icon.html" with name="activity" %} Наблюдение и связь</div>
   <section class="panel" aria-labelledby="h-dyn">
     <h2 id="h-dyn">Динамика по шкалам <span class="muted">PHQ-9 — депрессия, GAD-7 — тревога</span></h2>
-    <div class="chart-box"><canvas id="ch-scales" aria-label="График PHQ-9 и GAD-7"></canvas></div>
-    <p class="src">Пороги: 5 — лёгкая, 10 — умеренная, 15 — выраженная. Kroenke 2001; Spitzer 2006.</p>
+    <div class="scale-summaries">
+      <div><span>PHQ-9 · депрессия</span><strong>{% if latest_phq %}{{ latest_phq.total }}<small> / 27</small>{% else %}—{% endif %}</strong><span>{% if latest_phq %}{{ latest_phq.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+      <div><span>GAD-7 · тревога</span><strong>{% if latest_gad %}{{ latest_gad.total }}<small> / 21</small>{% else %}—{% endif %}</strong><span>{% if latest_gad %}{{ latest_gad.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+    </div>
+    {% if chart.phq9 or chart.gad7 %}<div class="chart-box"><canvas id="ch-scales" role="img" aria-label="Динамика PHQ-9 и GAD-7 за последние 90 дней. Последние результаты указаны выше."></canvas></div>{% else %}<p class="chart-empty">График появится после заполнения опросника.</p>{% endif %}
+    <p class="src">Результаты опросников за последние 90 дней. Баллы шкал не являются диагнозом.</p>
   </section>
   <section class="panel" aria-labelledby="h-diary">
     <h2 id="h-diary">Дневник пациента <span class="muted">настроение и тревога, 0–10</span></h2>
-    <div class="chart-box"><canvas id="ch-diary" aria-label="График настроения и тревоги"></canvas></div>
+    {% if last_checkin %}<div class="chart-box"><canvas id="ch-diary" role="img" aria-label="Динамика настроения и тревоги. Последняя запись приведена ниже."></canvas></div><p class="src">Настроение: 10 — лучше. Тревога: 10 — сильнее. До 30 последних записей.</p>{% else %}<p class="chart-empty">Пациент ещё не заполнял дневник.</p>{% endif %}
     {% if last_checkin %}
     <dl class="kv small" style="margin-top:12px">
       <dt>Последняя запись</dt><dd>{{ last_checkin.created_at|date:"d.m H:i" }}</dd>
-      <dt>Сон</dt><dd>{{ last_checkin.sleep_hours|default:"—" }} ч</dd>
+      <dt>Настроение / тревога</dt><dd>{{ last_checkin.mood }} / {{ last_checkin.anxiety }} из 10</dd>
+      <dt>Сон</dt><dd>{% if last_checkin.sleep_hours != None %}{{ last_checkin.sleep_hours|floatformat:"-1" }}{% else %}—{% endif %} ч</dd>
       <dt>Выходил из дома / ел</dt><dd>{{ last_checkin.left_home|yesno:"да,нет,—" }} / {{ last_checkin.ate_normally|yesno:"да,нет,—" }}</dd>
       <dt>Алкоголь</dt><dd>{{ last_checkin.alcohol_units }} порц.</dd>
       {% if last_checkin.side_effects %}<dt>Нежелательные явления</dt><dd>{{ last_checkin.side_effects|join:", " }}</dd>{% endif %}
@@ -145,7 +158,7 @@
     <div class="thread">
       {% for m in thread %}<div class="msg {% if m.sender_id == request.user.id %}mine{% endif %}">{{ m.text|linebreaksbr }}<time>{{ m.created_at|date:"d.m H:i" }}</time></div>{% empty %}<p class="muted">Переписки пока нет.</p>{% endfor %}
     </div>
-    <form method="post" action="/doctor/patient/{{ p.public_id }}/message/" style="display:flex;gap:8px;margin-top:10px">{% csrf_token %}
+    <form method="post" action="/doctor/patient/{{ p.public_id }}/message/" class="message-compose">{% csrf_token %}
       <input type="text" name="text" placeholder="Сообщение пациенту" aria-label="Сообщение пациенту" required>
       <button class="btn">Отправить</button>
     </form>
@@ -157,25 +170,9 @@
     {% for d in decisions %}<div class="small" style="padding:4px 0">{{ d.created_at|date:"d.m H:i" }} — {{ d.get_kind_display }}{% if d.payload.drug %}: {{ d.payload.drug }}{% endif %}{% if d.rationale %}. {{ d.rationale }}{% endif %}</div>{% endfor %}
   </section>
   {% endif %}
-  <p class="small muted">Карточка собрана за {{ render_ms }} мс.</p>
+
 </div>
 </div>
 
 {{ chart|json_script:"chart-data" }}
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-  const d = JSON.parse(JSON.parse(document.getElementById("chart-data").textContent));
-  const ink = "#1E2A32", grid = "#E3E8EA";
-  Chart.defaults.font.family = "Golos, system-ui, sans-serif"; Chart.defaults.color = "#4A5A64";
-  const labels = (...arrs) => [...new Set(arrs.flat().map(p => p.x))];
-  const bands = { id: "bands", beforeDraw(c) { const {ctx, chartArea: a, scales: {y}} = c; if (!c.options.plugins.bands) return;
-    [[10, 15, "rgba(217,154,30,.08)"], [15, 27, "rgba(180,35,24,.07)"]].forEach(([lo, hi, col]) => { ctx.fillStyle = col; ctx.fillRect(a.left, y.getPixelForValue(Math.min(hi, y.max)), a.width, y.getPixelForValue(lo) - y.getPixelForValue(Math.min(hi, y.max))); }); } };
-  const line = (id, sets, max, withBands) => new Chart(document.getElementById(id), { type: "line", plugins: [bands],
-    data: { labels: labels(...sets.map(s => s.data)), datasets: sets.map(s => ({ label: s.label, data: s.data, parsing: {xAxisKey: "x", yAxisKey: "y"}, borderColor: s.color, backgroundColor: s.color, tension: .25, pointRadius: 3, borderWidth: 2, borderDash: s.dash || [] })) },
-    options: { maintainAspectRatio: false, animation: false, plugins: { bands: withBands, legend: { position: "bottom", labels: { boxWidth: 12 } } },
-      scales: { y: { min: 0, max, grid: { color: grid } }, x: { grid: { display: false } } } } });
-  line("ch-scales", [{label: "PHQ-9", data: d.phq9, color: "#1F5F7A"}, {label: "GAD-7", data: d.gad7, color: "#9A6200", dash: [6, 4]}], 27, true);
-  line("ch-diary", [{label: "Настроение", data: d.mood, color: "#2F7D55"}, {label: "Тревога", data: d.anxiety, color: "#B42318", dash: [6, 4]}], 10, false);
-});
-</script>
 {% endblock %}

@@ -1,17 +1,21 @@
 {% extends "web/base.html" %}
 {% block body %}
 <div class="doc">
-  <nav class="doc-nav" aria-label="Разделы">
-    <div class="logo">Лямбда<small>кабинет врача</small></div>
-    <a href="/doctor/" {% if nav == "home" %}aria-current="page"{% endif %}>Пациенты</a>
-    <a href="/doctor/alerts/" {% if nav == "alerts" %}aria-current="page"{% endif %}>Сигналы {% if open_alerts %}<span class="count">{{ open_alerts }}</span>{% endif %}</a>
-    <a href="/doctor/patient/new/" {% if nav == "new" %}aria-current="page"{% endif %}>Новый пациент</a>
-    <div class="who">{{ request.user.get_full_name }}<br>{{ request.user.doctor.get_specialty_display }}
-      <form method="post" action="/logout/">{% csrf_token %}<button class="btn ghost small" style="color:#9FB2BC;border-color:#4A5A64;margin-top:8px">Выйти</button></form></div>
-  </nav>
-  <main class="doc-main">
-    {% include "web/_flash.html" %}
-    {% block main %}{% endblock %}
-  </main>
+  <aside class="doc-sidebar">
+    <a class="brand-lockup" href="/doctor/" aria-label="Лямбда — кабинет врача"><span class="brand-symbol">{% include "web/_icon.html" with name="compass" %}</span><span><strong>Лямбда</strong><small>Клинический компас</small></span></a>
+    <div class="sidebar-section-label">Кабинет врача</div>
+    <nav class="doc-nav" aria-label="Разделы врача">
+      <a href="/doctor/" {% if nav == "home" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="patients" %}<span>Пациенты</span></a>
+      <a href="/doctor/alerts/" {% if nav == "alerts" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="bell" %}<span>Сигналы</span>{% if open_alerts %}<span class="count">{{ open_alerts }}</span>{% endif %}</a>
+      <a href="/doctor/patient/new/" {% if nav == "new" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="plus" %}<span>Новый пациент</span></a>
+    </nav>
+    <div class="sidebar-note">{% include "web/_icon.html" with name="shield" %}<p>Рекомендации помогают принять решение. Клинические действия подтверждаете вы.</p></div>
+    <div class="doctor-identity">
+      <span class="avatar" aria-hidden="true">{{ request.user.first_name|first }}{{ request.user.last_name|first }}</span>
+      <div><b>{{ request.user.get_full_name }}</b><span>{{ request.user.doctor.get_specialty_display }}</span></div>
+      <form method="post" action="/logout/">{% csrf_token %}<button class="icon-button" aria-label="Выйти из кабинета" title="Выйти">{% include "web/_icon.html" with name="logout" %}</button></form>
+    </div>
+  </aside>
+  <main class="doc-main" id="main-content">{% include "web/_flash.html" %}{% block main %}{% endblock %}</main>
 </div>
 {% endblock %}

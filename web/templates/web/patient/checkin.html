@@ -1,26 +1,32 @@
 {% extends "web/patient/base.html" %}
+{% load static %}
+{% block head %}<script src="{% static 'web/patient-forms.js' %}" defer></script>{% endblock %}
 {% block title %}Как вы сегодня — Лямбда{% endblock %}
 {% block heading %}Как вы сегодня?{% endblock %}
 {% block main %}
-<form method="post">{% csrf_token %}
-  {% if form.errors %}<div class="flash error">Отметьте настроение и тревогу — это обязательные поля.</div>{% endif %}
-  <fieldset class="q"><legend>Настроение</legend>
-    <div class="scale0">{% for i in range %}<input type="radio" name="mood" id="m{{ i }}" value="{{ i }}" required><label for="m{{ i }}">{{ i }}</label>{% endfor %}</div>
-    <div class="ends"><span>очень плохое</span><span>отличное</span></div>
+<a class="text-action back-link" href="/me/">← На сегодня</a>
+<div class="form-intro"><span class="soft-icon mint">{% include "web/_icon.html" with name="heart" %}</span><div><b>Короткая запись о самочувствии</b><p>Обязательно отметьте настроение и тревогу. Остальное — по желанию.</p></div></div>
+<form method="post" class="patient-form" data-progress-form>{% csrf_token %}
+  {% if form.errors %}<div class="flash error" role="alert"><b>Запись пока не сохранена.</b><ul>{% for field in form %}{% for error in field.errors %}<li><a href="#{{ field.name }}-question">{{ field.label }}: {{ error }}</a></li>{% endfor %}{% endfor %}</ul></div>{% endif %}
+  <div class="form-progress"><span data-progress-text aria-live="polite">Заполнено обязательных полей: 0 из 2</span><progress value="0" max="2" aria-label="Заполненные обязательные поля"></progress></div>
+  <fieldset class="q form-card" id="mood-question"><legend>Настроение <span class="required-note">обязательно</span></legend>
+    <div class="scale0">{% for i in range %}<input type="radio" name="mood" id="m{{ i }}" value="{{ i }}" {% if form.mood.value|stringformat:"s" == i|stringformat:"s" %}checked{% endif %} required><label for="m{{ i }}">{{ i }}</label>{% endfor %}</div>
+    <div class="ends"><span>0 — очень плохое</span><span>10 — отличное</span></div>
   </fieldset>
-  <fieldset class="q"><legend>Тревога</legend>
-    <div class="scale0">{% for i in range %}<input type="radio" name="anxiety" id="a{{ i }}" value="{{ i }}" required><label for="a{{ i }}">{{ i }}</label>{% endfor %}</div>
-    <div class="ends"><span>нет тревоги</span><span>очень сильная</span></div>
+  <fieldset class="q form-card" id="anxiety-question"><legend>Тревога <span class="required-note">обязательно</span></legend>
+    <div class="scale0">{% for i in range %}<input type="radio" name="anxiety" id="a{{ i }}" value="{{ i }}" {% if form.anxiety.value|stringformat:"s" == i|stringformat:"s" %}checked{% endif %} required><label for="a{{ i }}">{{ i }}</label>{% endfor %}</div>
+    <div class="ends"><span>0 — нет тревоги</span><span>10 — очень сильная</span></div>
   </fieldset>
-  <div class="q"><label for="sleep" style="margin-top:0">Сколько часов спали</label><input type="number" id="sleep" name="sleep_hours" min="0" max="24" step="0.5" inputmode="decimal"></div>
-  <fieldset class="q"><legend>Выходили сегодня из дома?</legend><div class="opts" style="grid-template-columns:1fr 1fr">
-    <label><input type="radio" name="left_home" value="1"> Да</label><label><input type="radio" name="left_home" value="0"> Нет</label></div></fieldset>
-  <fieldset class="q"><legend>Ели как обычно?</legend><div class="opts" style="grid-template-columns:1fr 1fr">
-    <label><input type="radio" name="ate_normally" value="1"> Да</label><label><input type="radio" name="ate_normally" value="0"> Нет</label></div></fieldset>
-  <div class="q"><label for="alc" style="margin-top:0">Алкоголь, порций (бокал вина, бутылка пива, 50 г крепкого)</label><input type="number" id="alc" name="alcohol_units" min="0" max="50" value="0" inputmode="numeric"></div>
-  <fieldset class="q"><legend>Заметили что-то из этого?</legend><div class="opts">
-    {% for v, l in form.fields.side_effects.choices %}<label><input type="checkbox" name="side_effects" value="{{ v }}"> {{ l|capfirst }}</label>{% endfor %}</div></fieldset>
-  <div class="q"><label for="txt" style="margin-top:0">Своими словами (необязательно)</label><textarea id="txt" name="text" placeholder="Что происходило, что беспокоит"></textarea></div>
-  <p style="margin-top:16px"><button class="btn block">Сохранить запись</button></p>
+  <h2 class="form-section-title">Ещё немного о вашем дне <span>необязательно</span></h2>
+  <div class="q form-card" id="sleep_hours-question"><label for="sleep" style="margin-top:0">Сколько часов спали</label><input type="number" id="sleep" name="sleep_hours" min="0" max="24" step="any" inputmode="decimal" value="{{ form.sleep_hours.value|default_if_none:'' }}"></div>
+  <fieldset class="q form-card" id="left_home-question"><legend>Выходили сегодня из дома?</legend><div class="opts" style="grid-template-columns:1fr 1fr">
+    <label><input type="radio" name="left_home" value="1" {% if form.left_home.value == "1" %}checked{% endif %}> Да</label><label><input type="radio" name="left_home" value="0" {% if form.left_home.value == "0" %}checked{% endif %}> Нет</label></div></fieldset>
+  <fieldset class="q form-card" id="ate_normally-question"><legend>Ели как обычно?</legend><div class="opts" style="grid-template-columns:1fr 1fr">
+    <label><input type="radio" name="ate_normally" value="1" {% if form.ate_normally.value == "1" %}checked{% endif %}> Да</label><label><input type="radio" name="ate_normally" value="0" {% if form.ate_normally.value == "0" %}checked{% endif %}> Нет</label></div></fieldset>
+  <div class="q form-card" id="alcohol_units-question"><label for="alc" style="margin-top:0">Алкоголь, порций (бокал вина, бутылка пива, 50 г крепкого)</label><input type="number" id="alc" name="alcohol_units" min="0" max="50" value="{{ form.alcohol_units.value|default_if_none:'0' }}" inputmode="numeric"></div>
+  <fieldset class="q form-card" id="side_effects-question"><legend>Заметили что-то из этого?</legend><p class="field-hint">Можно выбрать несколько вариантов. Если ничего — пропустите вопрос.</p><div class="opts">
+    {% for v, l in form.fields.side_effects.choices %}<label><input type="checkbox" name="side_effects" value="{{ v }}" {% if v in form.side_effects.value %}checked{% endif %}> {{ l|capfirst }}</label>{% endfor %}</div></fieldset>
+  <div class="q form-card" id="text-question"><label for="txt" style="margin-top:0">Своими словами (необязательно)</label><textarea id="txt" name="text" maxlength="3000" placeholder="Что происходило, что беспокоит">{{ form.text.value|default_if_none:"" }}</textarea></div>
+  <div class="form-submit"><button class="btn block">Сохранить запись</button><p class="small muted">После сохранения запись появится в вашей карточке у врача.</p></div>
 </form>
 {% endblock %}

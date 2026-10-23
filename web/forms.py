@@ -67,15 +67,15 @@ class JoinForm(forms.Form):
 
 
 class CheckinForm(forms.Form):
-    mood = forms.IntegerField(min_value=0, max_value=10)
-    anxiety = forms.IntegerField(min_value=0, max_value=10)
-    sleep_hours = forms.FloatField(min_value=0, max_value=24, required=False)
-    left_home = forms.TypedChoiceField(choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
-    ate_normally = forms.TypedChoiceField(choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
-    alcohol_units = forms.IntegerField(min_value=0, max_value=50, required=False)
-    side_effects = forms.MultipleChoiceField(required=False, choices=[(x, x) for x in [
+    mood = forms.IntegerField(label="Настроение", min_value=0, max_value=10)
+    anxiety = forms.IntegerField(label="Тревога", min_value=0, max_value=10)
+    sleep_hours = forms.FloatField(label="Сон", min_value=0, max_value=24, required=False)
+    left_home = forms.TypedChoiceField(label="Выходили из дома", choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
+    ate_normally = forms.TypedChoiceField(label="Питание", choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
+    alcohol_units = forms.IntegerField(label="Алкоголь", min_value=0, max_value=50, required=False)
+    side_effects = forms.MultipleChoiceField(label="Самочувствие", required=False, choices=[(x, x) for x in [
         "сонливость", "головокружение", "головная боль", "тошнота", "бессонница", "усиление тревоги", "слабость", "онемение или покалывание"]])
-    text = forms.CharField(required=False, max_length=3000)
+    text = forms.CharField(label="Своими словами", required=False, max_length=3000)
 
 
 class TrustedContactForm(forms.ModelForm):

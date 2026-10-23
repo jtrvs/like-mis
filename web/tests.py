@@ -127,6 +127,27 @@ class WebFlows(TestCase):
         self.assertContains(r, "вальпроевая кислота")
 
 
+    def test_patient_search_is_limited_to_assigned_patients(self):
+        self.login("sidorov")
+        response = self.client.get("/doctor/", {"q": "мОрОз"})
+        self.assertEqual([r["p"].last_name for r in response.context["rows"]], ["Морозов"])
+        response = self.client.get("/doctor/", {"q": "Смирнова"})
+        self.assertEqual(response.context["rows"], [])
+
+    def test_filter_for_patients_without_accounts(self):
+        self.login("petrova")
+        response = self.client.get("/doctor/", {"status": "unjoined"})
+        self.assertEqual([r["p"].last_name for r in response.context["rows"]], ["Павлов"])
+        self.assertContains(response, "Нет записей")
+
+    def test_zero_score_is_displayed_as_zero(self):
+        patient = PatientProfile.objects.get(last_name="Смирнова")
+        ScaleResponse.objects.filter(patient=patient, scale_code="phq9").update(total=0)
+        self.login("petrova")
+        response = self.client.get("/doctor/", {"q": "Смирнова"})
+        self.assertContains(response, 'data-score="phq9">0</b>')
+
+
 class ReviewRegressions(TestCase):
     """Регрессии по итогам независимого ревью."""
 
@@ -203,3 +224,121 @@ class ReviewRegressions(TestCase):
                                                      "child_pugh_class": "x", "egfr": "-5", "icd10": "абв"})
         self.assertEqual(r.status_code, 200)  # форма с ошибками, карточка не создана
         self.assertFalse(PatientProfile.objects.filter(last_name="А").exists())
+
+    def test_card_preserves_zero_sleep_and_scale_scores(self):
+        from core.models import DailyCheckin
+        p = PatientProfile.objects.get(last_name="Смирнова")
+        DailyCheckin.objects.create(patient=p, mood=0, anxiety=0, sleep_hours=0)
+        ScaleResponse.objects.create(patient=p, scale_code="phq9", total=0, answers=[0] * 9)
+        self.login("petrova")
+        response = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(response, '<dd>0 ч</dd>', html=True)
+        self.assertContains(response, '0<small> / 27</small>', html=True)
+        self.assertEqual(response.context["chart"]["phq9"][-1]["y"], 0)
+
+    def test_card_without_history_has_no_empty_chart(self):
+        from core.models import DailyCheckin
+        p = PatientProfile.objects.get(last_name="Павлов")
+        DailyCheckin.objects.filter(patient=p).delete()
+        ScaleResponse.objects.filter(patient=p).delete()
+        self.login("petrova")
+        response = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(response, "Пациент ещё не заполнял дневник.")
+        self.assertContains(response, "График появится после заполнения опросника.")
+        self.assertNotContains(response, '<canvas')
+
+    def test_invalid_diary_keeps_answers_and_explains_error(self):
+        self.login("anna")
+        response = self.client.post('/me/checkin/', {
+            'mood': '0', 'anxiety': '4', 'sleep_hours': '25',
+            'left_home': '0', 'ate_normally': '1', 'alcohol_units': '0',
+            'side_effects': ['тошнота'], 'text': 'Запись для врача',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Запись пока не сохранена.')
+        self.assertContains(response, 'href="#sleep_hours-question"')
+        self.assertContains(response, 'value="0" checked required')
+        self.assertContains(response, 'value="тошнота" checked')
+        self.assertContains(response, 'Запись для врача')
+
+    def test_incomplete_questionnaire_preserves_selected_answers(self):
+        self.login("anna")
+        response = self.client.post('/me/scale/gad7/', {'q0': '0', 'q1': '2'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Ответьте, пожалуйста, на все вопросы.')
+        self.assertContains(response, 'name="q0" value="0" checked required')
+        self.assertContains(response, 'name="q1" value="2" checked required')
+
+    def test_chat_without_lead_does_not_pretend_to_send(self):
+        from core.models import CareLink, Message
+        p = PatientProfile.objects.get(user__username="anna")
+        CareLink.objects.filter(patient=p).update(active=False)
+        self.login("anna")
+        response = self.client.get('/me/chat/')
+        self.assertContains(response, 'Ведущий врач пока не подключён')
+        self.assertNotContains(response, '<textarea')
+        before = Message.objects.count()
+        response = self.client.post('/me/chat/', {'text': 'Вопрос врачу'}, follow=True)
+        self.assertContains(response, 'Сообщение не отправлено')
+        self.assertEqual(Message.objects.count(), before)
+
+    def test_invalid_contact_shows_error_and_preserves_name(self):
+        self.login("anna")
+        response = self.client.post('/me/help/', {'name': 'Иван', 'phone': '', 'patient_may_call': 'on'})
+        self.assertContains(response, 'Контакт не сохранён.')
+        self.assertContains(response, 'value="Иван"')
+        self.assertContains(response, 'class="more panel contact-settings" open')
+
+    def test_crisis_screen_does_not_claim_doctor_read_message(self):
+        self.login("anna")
+        response = self.client.get('/me/help/?crisis=1')
+        self.assertContains(response, 'Этот экран не подтверждает')
+        self.assertNotContains(response, 'Ваш врач уже получил сообщение')
+        self.assertNotContains(response, 'ответят прямо сейчас')
+
+    def test_medication_sections_separate_today_from_history(self):
+        from django.utils import timezone
+        self.login("anna")
+        response = self.client.get('/me/meds/')
+        self.assertContains(response, 'Сегодня')
+        self.assertTrue(all(timezone.localdate(d.scheduled_at) == timezone.localdate() for d in response.context['today_doses']))
+        self.assertTrue(all(timezone.localdate(d.scheduled_at) < timezone.localdate() for d in response.context['past_doses']))
+
+    def test_patient_progress_shows_zero_scores_and_empty_history(self):
+        from core.models import DailyCheckin
+        p = PatientProfile.objects.get(user__username='anna')
+        ScaleResponse.objects.filter(patient=p).delete()
+        DailyCheckin.objects.filter(patient=p).delete()
+        ScaleResponse.objects.create(patient=p, scale_code='phq9', total=0, answers=[0] * 9)
+        self.login('anna')
+        response = self.client.get('/me/progress/')
+        self.assertContains(response, '0<small> / 27</small>', html=True)
+        self.assertContains(response, 'Ещё не заполнен')
+        self.assertContains(response, 'Записей пока нет.')
+        self.assertNotContains(response, 'id="ch-diary"')
+        self.assertEqual(response.context['chart']['phq9'][-1]['y'], 0)
+
+    def test_import_review_shows_source_without_applying_it(self):
+        from unittest.mock import patch
+        p = PatientProfile.objects.get(last_name='Павлов')
+        self.login('petrova')
+        text = 'Тестовая выписка <script>alert(1)</script>'
+        payload = {'diagnoses': ['G40'], 'medications': [{'inn': 'вальпроевая кислота', 'dose_mg': 500, 'times_per_day': 2}],
+                   'stopped_medications': [], 'conditions': [], 'scales': {'phq9': 12}, 'suicidal_risk': False}
+        before = (p.diagnoses.count(), p.prescriptions.count())
+        with patch('web.views_doctor.extract_text', return_value=payload):
+            response = self.client.post(f'/doctor/patient/{p.public_id}/import/', {'text': text})
+        self.assertContains(response, 'Ещё не сохранено')
+        self.assertContains(response, 'автоматически не переносятся')
+        self.assertContains(response, '&lt;script&gt;alert(1)&lt;/script&gt;')
+        self.assertNotContains(response, '<script>alert(1)</script>')
+        self.assertEqual((p.diagnoses.count(), p.prescriptions.count()), before)
+        self.client.post(f'/doctor/patient/{p.public_id}/import/', {'apply': '1', 'dx': ['G40']})
+        self.assertTrue(p.diagnoses.filter(icd10='G40').exists())
+        self.assertEqual(p.prescriptions.count(), before[1])
+
+    def test_import_empty_text_displays_error(self):
+        self.login('petrova')
+        p = PatientProfile.objects.get(last_name='Павлов')
+        response = self.client.post(f'/doctor/patient/{p.public_id}/import/', {'text': '   '})
+        self.assertContains(response, 'Вставьте текст для разбора.')

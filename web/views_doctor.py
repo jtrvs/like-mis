@@ -1,4 +1,3 @@
-import json
 import time
 from datetime import date, timedelta
 
@@ -60,10 +59,32 @@ def doctor_home(request):
             "dx": p.diagnoses.filter(is_primary=True).first(),
             "phq": last_phq, "gad": last_gad, "last_seen": last_seen, "joined": bool(p.user_id), "code": link.invite_code,
             "alerts": Alert.objects.filter(patient_id=p.id, status__in=Alert.OPEN).count(),
+            "has_observations": bool(last_seen or last_phq or last_gad),
         })
     rows.sort(key=lambda r: (RISK_ORDER[r["risk"]], -r["alerts"], r["p"].last_name))
+    summary = {"total": len(rows), "attention": sum(r["risk"] == "red" for r in rows)}
+    q = request.GET.get("q", "").strip()[:120]
+    status_filter = request.GET.get("status", "")
+    if status_filter not in ("attention", "watch", "unjoined"):
+        status_filter = ""
+    if q:
+        search = q.casefold()
+        rows = [r for r in rows if search in " ".join((
+            r["p"].last_name, r["p"].first_name, r["p"].middle_name,
+            r["dx"].icd10 if r["dx"] else "",
+            r["dx"].title if r["dx"] else "",
+        )).casefold()]
+    if status_filter == "attention":
+        rows = [r for r in rows if r["risk"] == "red"]
+    elif status_filter == "watch":
+        rows = [r for r in rows if r["risk"] == "amber"]
+    elif status_filter == "unjoined":
+        rows = [r for r in rows if not r["joined"]]
     alerts = _with_names(my_alerts(request).filter(status__in=Alert.OPEN).order_by("-created_at")[:20])
-    return render(request, "web/doctor/home.html", {"rows": rows, "alerts": _sorted_alerts(alerts), "nav": "home", **_nav(request)})
+    return render(request, "web/doctor/home.html", {
+        "rows": rows, "alerts": _sorted_alerts(alerts), "nav": "home",
+        "summary": summary, "q": q, "status_filter": status_filter, **_nav(request),
+    })
 
 
 def _sorted_alerts(qs):
@@ -104,6 +125,18 @@ def patient_card(request, public_id):
     link = _link(p, request.doctor)
     alerts = Alert.objects.filter(patient_id=p.id, status__in=Alert.OPEN)
     checkins = list(DailyCheckin.objects.filter(patient=p).order_by("-created_at")[:30])[::-1]
+    scales = list(ScaleResponse.objects.filter(
+        patient=p, scale_code__in=["phq9", "gad7"],
+        created_at__gte=timezone.now() - timedelta(days=90),
+    ).order_by("created_at"))
+    chart = {
+        code: [{"x": timezone.localtime(r.created_at).isoformat(), "y": r.total}
+               for r in scales if r.scale_code == code]
+        for code in ("phq9", "gad7")
+    }
+    for code in ("mood", "anxiety"):
+        chart[code] = [{"x": timezone.localtime(c.created_at).isoformat(), "y": getattr(c, code)}
+                       for c in checkins]
     ctx = {
         "p": p, "age": S.age(p), "link": link, "nav": "home",
         "via_escalation": link.doctor_id != request.doctor.id,
@@ -119,11 +152,9 @@ def patient_card(request, public_id):
         "aviandr": S.aviandr_panel(p),
         "aviandr_drug": loader.drugs()["aviandr"],
         "is_psychiatrist": request.doctor.is_psychiatrist,
-        "chart": json.dumps({
-            "phq9": S.series(p, "phq9"), "gad7": S.series(p, "gad7"),
-            "mood": [{"x": timezone.localtime(c.created_at).strftime("%d.%m"), "y": c.mood} for c in checkins],
-            "anxiety": [{"x": timezone.localtime(c.created_at).strftime("%d.%m"), "y": c.anxiety} for c in checkins],
-        }),
+        "chart": chart,
+        "latest_phq": next((r for r in reversed(scales) if r.scale_code == "phq9"), None),
+        "latest_gad": next((r for r in reversed(scales) if r.scale_code == "gad7"), None),
         "last_checkin": checkins[-1] if checkins else None,
         "thread": Message.objects.filter(care_link=link).order_by("-created_at")[:30][::-1],
         "extra_visit": S.needs_extra_visit(p),

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#1F5F7A">
+<meta name="theme-color" content="#705681">
 <title>{% block title %}Лямбда{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="stylesheet" href="{% static 'web/app.css' %}">
@@ -11,6 +11,7 @@
 {% block head %}{% endblock %}
 </head>
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+<a class="skip-link" href="#main-content">К содержимому</a>
 {% block body %}{% endblock %}
 </body>
 </html>

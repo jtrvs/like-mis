@@ -1,14 +1,22 @@
 {% extends "web/patient/base.html" %}
 {% block title %}Врач — Лямбда{% endblock %}
-{% block heading %}{% if link %}{{ link.doctor.user.get_full_name }}{% else %}Врач{% endif %}{% endblock %}
+{% block heading %}Связь с врачом{% endblock %}
 {% block main %}
-<p class="small muted">Врач отвечает в рабочее время. Если вам очень плохо сейчас — нажмите «Мне плохо» вверху.</p>
+{% if link %}
+<div class="doctor-contact panel"><span class="soft-icon lavender">{% include "web/_icon.html" with name="chat" %}</span><div><strong>{{ link.doctor.user.get_full_name }}</strong><p class="small muted">Ваш ведущий врач</p></div></div>
+<p class="chat-expectation">Здесь можно задать вопрос о лечении. Мгновенный ответ не гарантирован. Если помощь нужна сейчас, откройте <a href="/me/help/">«Мне плохо»</a>.</p>
 {% if extra_visit %}<div class="flash warning">Вопросов много — возможно, стоит записаться на дополнительный приём. Спросите врача.</div>{% endif %}
-<div class="thread" style="max-height:none">
-  {% for m in thread %}<div class="msg {% if m.sender_id == request.user.id %}mine{% endif %}">{{ m.text|linebreaksbr }}<time>{{ m.created_at|date:"d.m H:i" }}</time></div>{% empty %}<p class="muted">Здесь можно задать вопрос о лечении.</p>{% endfor %}
-</div>
-<form method="post" style="margin-top:12px">{% csrf_token %}
-  <label for="t" class="sr">Сообщение</label><textarea id="t" name="text" required placeholder="Напишите врачу" style="min-height:72px"></textarea>
-  <p style="margin-top:8px"><button class="btn block">Отправить</button></p>
-</form>
+<section class="panel patient-conversation" aria-label="Переписка с врачом">
+  <div class="thread">
+    {% for m in thread %}<div class="msg {% if m.sender_id == request.user.id %}mine{% endif %}"><span class="message-author">{% if m.sender_id == request.user.id %}Вы{% else %}Врач{% endif %}</span>{{ m.text|linebreaksbr }}<time datetime="{{ m.created_at|date:'c' }}">{{ m.created_at|date:"d.m.Y H:i" }}</time></div>{% empty %}<div class="conversation-empty">{% include "web/_icon.html" with name="chat" %}<p>Переписки пока нет.</p><span>Напишите первый вопрос вашему врачу.</span></div>{% endfor %}
+  </div>
+  <form method="post" class="patient-message-form">{% csrf_token %}
+    <label for="t">Ваше сообщение</label><textarea id="t" name="text" required maxlength="3000" placeholder="Напишите врачу" rows="4" aria-describedby="message-limit"></textarea>
+    <p id="message-limit" class="small muted">До 3000 символов. Сообщение отправится после нажатия кнопки.</p>
+    <button class="btn block">Отправить</button>
+  </form>
+</section>
+{% else %}
+<section class="panel conversation-empty">{% include "web/_icon.html" with name="chat" %}<h2>Ведущий врач пока не подключён</h2><p>Отправка сообщений будет доступна после подключения врача.</p><a class="btn ghost" href="/me/help/">Открыть помощь</a></section>
+{% endif %}
 {% endblock %}

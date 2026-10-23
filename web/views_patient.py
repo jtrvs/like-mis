@@ -1,4 +1,3 @@
-import json
 from datetime import timedelta
 
 from django.contrib import messages
@@ -94,7 +93,8 @@ def scale_fill(request, code):
                 return r
             messages.success(request, f"Спасибо. Результат: {res.total} баллов. Врач увидит его в карточке.")
             return redirect("patient_progress")
-    items = list(enumerate(s["item_labels"]))
+    items = [(i, label, request.POST.get(f"q{i}", ""))
+             for i, label in enumerate(s["item_labels"])]
     return render(request, "web/patient/scale.html", {"s": s, "items": items, "labels": list(enumerate(s["answer_labels"])), "error": error, "tab": "home"})
 
 
@@ -106,7 +106,14 @@ def meds(request):
     since = timezone.localdate() - timedelta(days=6)
     doses = MedicationIntake.objects.filter(prescription__patient=p, prescription__status="active", scheduled_at__date__gte=since,
                                             scheduled_at__lte=timezone.now() + timedelta(hours=12)).select_related("prescription").order_by("-scheduled_at")
-    return render(request, "web/patient/meds.html", {"doses": doses, "rx": p.prescriptions.filter(status="active"), "adh": S.adherence(p, 14), "tab": "meds"})
+    today = timezone.localdate()
+    doses = list(doses)
+    return render(request, "web/patient/meds.html", {
+        "today_doses": sorted((d for d in doses if timezone.localdate(d.scheduled_at) == today), key=lambda d: d.scheduled_at),
+        "upcoming_doses": sorted((d for d in doses if timezone.localdate(d.scheduled_at) > today), key=lambda d: d.scheduled_at),
+        "past_doses": [d for d in doses if timezone.localdate(d.scheduled_at) < today],
+        "rx": p.prescriptions.filter(status="active"), "adh": S.adherence(p, 14), "tab": "meds",
+    })
 
 
 @patient_required
@@ -127,11 +134,22 @@ def dose_mark(request, intake_id):
 def progress(request):
     p = request.patient
     checkins = list(DailyCheckin.objects.filter(patient=p).order_by("-created_at")[:30])[::-1]
-    chart = {"phq9": S.series(p, "phq9"), "gad7": S.series(p, "gad7"),
-             "mood": [{"x": timezone.localtime(c.created_at).strftime("%d.%m"), "y": c.mood} for c in checkins],
-             "anxiety": [{"x": timezone.localtime(c.created_at).strftime("%d.%m"), "y": c.anxiety} for c in checkins]}
+    responses = list(ScaleResponse.objects.filter(
+        patient=p, scale_code__in=["phq9", "gad7"],
+        created_at__gte=timezone.now() - timedelta(days=90),
+    ).order_by("created_at"))
+    chart = {
+        code: [{"x": timezone.localtime(r.created_at).isoformat(), "y": r.total}
+               for r in responses if r.scale_code == code]
+        for code in ("phq9", "gad7")
+    }
+    for code in ("mood", "anxiety"):
+        chart[code] = [{"x": timezone.localtime(c.created_at).isoformat(), "y": getattr(c, code)}
+                       for c in checkins]
     last = {c: ScaleResponse.objects.filter(patient=p, scale_code=c).order_by("-created_at").first() for c in ("phq9", "gad7")}
-    return render(request, "web/patient/progress.html", {"chart": json.dumps(chart), "last": last, "tab": "progress"})
+    return render(request, "web/patient/progress.html", {
+        "chart": chart, "last": last, "recent_checkins": list(reversed(checkins))[:5], "tab": "progress",
+    })
 
 
 @patient_required
@@ -146,6 +164,11 @@ def chat(request):
             r = _crisis_redirect(text, result=res)
             if r:
                 return r
+            messages.success(request, "Сообщение отправлено.")
+        elif not link:
+            messages.error(request, "Сообщение не отправлено: ведущий врач пока не подключён.")
+        else:
+            messages.error(request, "Введите текст сообщения.")
         return redirect("patient_chat")
     Message.objects.filter(care_link=link, read_at__isnull=True).exclude(sender=request.user).update(read_at=timezone.now())
     thread = Message.objects.filter(care_link=link).order_by("-created_at")[:50][::-1] if link else []
@@ -163,6 +186,7 @@ def help_page(request):
         messages.success(request, "Контакт добавлен.")
         return redirect("patient_help")
     return render(request, "web/patient/help.html", {"hotlines": S.HOTLINES, "contacts": p.trusted_contacts.all(), "form": form,
+                                                     "call_contacts": p.trusted_contacts.filter(patient_may_call=True),
                                                      "crisis": request.GET.get("crisis"), "tab": "help"})
 
 
