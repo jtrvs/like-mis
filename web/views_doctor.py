@@ -290,7 +290,13 @@ def import_history(request, public_id):
         selected_stopped = [row for row in stopped_rows if row["selected"]]
         # Проверяем все выбранные строки до любой записи в карточку.
         valid = [row["form"].is_valid() for row in selected + selected_stopped]
-        apply_error = not all(valid)
+        invalid_selection = (
+            set(request.POST.getlist("med")) - {row["index"] for row in current_rows if row["enabled"]}
+            or set(request.POST.getlist("stopped")) - {row["index"] for row in stopped_rows}
+        )
+        apply_error = bool(invalid_selection) or not all(valid)
+        if invalid_selection:
+            messages.error(request, "Список препаратов не соответствует текущему разбору. Обновите страницу разбора и подтвердите выбор заново.")
         skipped = 0
         if not apply_error:
             allowed_cond = set(COND_LABELS) | {"hepatic_failure", "renal_failure"}

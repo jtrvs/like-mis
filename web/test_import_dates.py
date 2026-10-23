@@ -97,3 +97,10 @@ class ImportMedicationTests(TestCase):
         self.parse()
         response = self.apply(**{'current-0-start_date': ''})
         self.assertNotContains(response, 'name="dx" value="G40" checked')
+
+    def test_stale_or_forged_medication_selection_cannot_partially_save(self):
+        self.parse()
+        response = self.apply(med=['сертралин'], dx=['G40'])
+        self.assertContains(response, 'Список препаратов не соответствует текущему разбору')
+        self.assertFalse(self.patient.diagnoses.filter(icd10='G40').exists())
+        self.assertFalse(self.patient.prescriptions.filter(drug_name='сертралин').exists())
