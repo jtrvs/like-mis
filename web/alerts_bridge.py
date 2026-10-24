@@ -105,3 +105,40 @@ def evaluate_current(patient):
 
 def open_alerts(patient):
     return Alert.objects.filter(patient_id=patient.id, status__in=Alert.OPEN)
+
+
+def silent_patients():
+    """
+    Плановая проверка (ALERTS["SCHEDULE_HOOK"], раз в час из сервиса alerts-worker): пациенты на терапии,
+    которые перестали отмечать приём препарата. Отдаёт аргументы для report_event по каждому пациенту.
+
+    Ожидаемые приёмы обычно создаются, когда пациент или врач открывает экран. Замолчавший пациент экран
+    не открывает — поэтому здесь расписание сначала достраивается до сегодняшнего дня, иначе пропусков «не видно».
+    """
+    import logging
+
+    from core.models import PatientProfile
+
+    from . import services as S
+
+    log = logging.getLogger("alerts")
+    day_ago = timezone.now() - timedelta(hours=24)
+    patients = PatientProfile.objects.filter(prescriptions__status="active").distinct()
+    for p in patients:
+        try:
+            link = lead_link(p)
+            if link is None:
+                continue
+            # Врач уже отметил такой сигнал за последние сутки — не дёргаем его каждый час по тому же поводу
+            if Alert.objects.filter(patient_id=p.id, rule_id="diary_abandoned", acknowledged_at__gte=day_ago).exists():
+                continue
+            for rx in p.prescriptions.filter(status="active"):
+                S.ensure_schedule(rx)
+            doctor = link.doctor
+            yield dict(
+                patient_id=p.id, patient_label=label(p), doctor=doctor.user,
+                backup_doctor=doctor.backup_doctor.user if doctor.backup_doctor_id else None,
+                facts=_intake_facts(p), card_url=f"/doctor/patient/{p.public_id}/",
+            )
+        except Exception:  # ошибка по одному пациенту не должна останавливать проверку остальных
+            log.exception("silent_patients: пациент id=%s пропущен из-за ошибки", p.id)

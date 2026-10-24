@@ -50,18 +50,14 @@ if result["show_crisis_screen"]:
 
 Экран помощи можно показать и без сигнала: `facts.needs_crisis_screen(text, phq9_answers)`.
 
-**Пациенты, которые ничего не присылают** (перестали отмечать таблетки — правило `diary_abandoned`). Сигнал на событие не сработает, раз событий нет. Для этого фоновый процесс раз в час вызывает функцию из настроек:
+**Пациенты, которые ничего не присылают** (перестали отмечать таблетки — правило `diary_abandoned`). Сигнал на событие не сработает, раз событий нет. Поэтому сервис `alerts-worker` раз в час вызывает функцию из настроек — она уже подключена:
 
 ```python
 # like_mis/settings.py
-ALERTS["SCHEDULE_HOOK"] = "patients.alerts_hook.silent_patients"
-
-# patients/alerts_hook.py — отдаёт аргументы report_event по каждому пациенту на терапии
-def silent_patients():
-    for p in Patient.objects.filter(on_therapy=True):
-        yield dict(patient_id=p.id, patient_label=f"П-{p.id:04d}", doctor=p.doctor, backup_doctor=p.backup_doctor,
-                   facts=facts.from_intakes([...последние приёмы, новые первыми...]))
+ALERTS["SCHEDULE_HOOK"] = "web.alerts_bridge.silent_patients"
 ```
+
+`silent_patients()` берёт пациентов с действующими назначениями, достраивает расписание приёмов до сегодняшнего дня (замолчавший пациент экран не открывает, поэтому без этого пропусков «не видно») и проверяет: 6 и более доз подряд без отметки → сигнал «К сведению» ведущему врачу. Если врач уже отметил такой сигнал, сутки по тому же пациенту не повторяем. Тесты — `web/test_silent_patients.py`.
 
 Проверка Авиандра для карточки:
 
@@ -99,7 +95,7 @@ docker compose exec web python manage.py alerts_demo
 
 ## Команды
 ```bash
-docker compose exec web python manage.py test                     # тесты (45)
+docker compose exec web python manage.py test                     # тесты (93)
 docker compose exec web python manage.py bench_alerts --n 300     # замер скорости сигналов (на тестовой базе)
 docker compose exec web python extraction/evaluate.py extraction/data/histories/test   # точность разбора выписок
 docker compose exec backup sh /ops/restore.sh                     # восстановить последнюю копию базы
