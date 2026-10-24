@@ -6,7 +6,7 @@
 и только после удаления ФИО (deidentify). Зарубежные API не используются.
 
 Включение: EXTRACTION_LLM=ollama (+ OLLAMA_URL, OLLAMA_MODEL) или EXTRACTION_LLM=yandex (+ YANDEX_API_KEY, YANDEX_FOLDER_ID).
-Не проверено в сети на момент написания — проверить на сервере (см. extraction/README.md).
+Не проверено в сети на момент написания — проверить на сервере (см. docs/role4.md).
 """
 import json
 import os

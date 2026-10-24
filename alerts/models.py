@@ -43,10 +43,16 @@ class Alert(models.Model):
     resolution = models.TextField(blank=True, help_text="что сделал врач")
     retries = models.PositiveSmallIntegerField(default=0)
     escalated_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="escalated_alerts")
+    exhausted_at = models.DateTimeField(null=True, blank=True, help_text="повторы исчерпаны, никто не отметил — записано в журнал")
 
     class Meta:
         ordering = ["-created_at"]
         indexes = [models.Index(fields=["doctor", "status", "severity"])]
+        constraints = [
+            # не больше одного ОТКРЫТОГО сигнала по одному правилу на пациента (защита от гонки при одновременных событиях)
+            models.UniqueConstraint(fields=["patient_id", "rule_id"], condition=models.Q(status__in=("new", "delivered", "escalated")),
+                                    name="uniq_open_alert_per_rule"),
+        ]
         verbose_name = "сигнал"
         verbose_name_plural = "сигналы"
 
@@ -68,6 +74,9 @@ class Alert(models.Model):
             "patient_actions": self.patient_actions, "doctor_actions": self.doctor_actions,
             "phrases": self.facts.get("suicide_keyword_matches", []) if self.rule_id == "suicide_risk_text" else [],
             "resolution": self.resolution,
+            "escalated_to_id": self.escalated_to_id,
+            "acknowledged_at": self.acknowledged_at.isoformat() if self.acknowledged_at else None,
+            "acknowledged_by_id": self.acknowledged_by_id,
         }
 
 

@@ -1,0 +1,35 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Помощь — Лямбда{% endblock %}
+{% block heading %}Помощь рядом{% endblock %}
+{% block main %}
+{% if crisis %}
+<div class="crisis" role="alert">
+  <h2>Вы не один</h2>
+  <p>Не ждите ответа в чате, если помощь нужна сейчас. Позвоните человеку, которому доверяете, или обратитесь за экстренной помощью.</p>
+  <p class="small">Этот экран не подтверждает, что врач прочитал сообщение или уже связывается с вами.</p>
+</div>
+{% endif %}
+<section class="urgent-help" aria-labelledby="h-urgent-help"><span class="soft-icon rose">{% include "web/_icon.html" with name="help" %}</span><div><h2 id="h-urgent-help">Если есть угроза жизни</h2><p>Позвоните в экстренные службы.</p><a class="btn danger" href="tel:112">Позвонить 112</a></div></section>
+<section class="patient-section" aria-labelledby="h-my-people"><h2 id="h-my-people">Близкие люди</h2><p class="small muted">Те, кому вы разрешили звонить из этого раздела.</p>
+  {% for c in call_contacts %}
+  <div class="hotline trusted-person"><div><b>{{ c.name }}</b><div class="small muted">{{ c.relation }}{% if c.doctor_may_call %}{% if c.relation %} · {% endif %}врач тоже может позвонить{% endif %}</div><span class="contact-number">{{ c.phone }}</span></div><a class="btn ghost small" href="tel:{{ c.phone }}">Позвонить</a></div>
+  {% empty %}<div class="empty-note panel">Контактов для звонка пока нет. Добавить близкого можно ниже.</div>{% endfor %}
+</section>
+<section class="patient-section" aria-labelledby="h-hotlines"><h2 id="h-hotlines">Линии помощи</h2>
+  {% for name, phone, note in hotlines %}<div class="hotline"><div><b>{{ name }}</b><div class="small muted">{{ note }}</div></div><a href="tel:{{ phone|cut:' '|cut:'-' }}">{{ phone }}</a></div>{% endfor %}
+</section>
+<details class="more panel contact-settings" {% if form.errors or not contacts %}open{% endif %}><summary>Мои контакты: добавить или изменить доступ</summary>
+  <p class="small muted">Для каждого человека отдельно выберите, кто сможет ему позвонить.</p>
+  {% if form.errors %}<div class="flash error" role="alert"><b>Контакт не сохранён.</b><ul>{% for field in form %}{% for error in field.errors %}<li>{{ field.label }}: {{ error }}</li>{% endfor %}{% endfor %}</ul></div>{% endif %}
+  <form method="post">{% csrf_token %}
+    <label for="id_name">Имя</label>{{ form.name }}
+    <label for="id_relation">Кем приходится</label>{{ form.relation }}
+    <label for="id_phone">Телефон</label>{{ form.phone }}
+    <label class="check">{{ form.patient_may_call }} <span>{{ form.patient_may_call.label }}</span></label>
+    <label class="check">{{ form.doctor_may_call }} <span>{{ form.doctor_may_call.label }}</span></label>
+    <p><button class="btn block">Добавить контакт</button></p>
+  </form>
+  {% if contacts %}<h3>Сохранённые контакты</h3><p class="small muted">Чтобы изменить доступ, удалите контакт и добавьте его с нужными разрешениями.</p>{% endif %}
+  {% for c in contacts %}<div class="contact-management"><div><b>{{ c.name }}</b><span>{{ c.phone }}</span><span>Мне: {{ c.patient_may_call|yesno:"доступен,скрыт" }} · Врачу: {{ c.doctor_may_call|yesno:"доступен,скрыт" }}</span></div><form method="post" action="/me/help/contact/{{ c.id }}/delete/">{% csrf_token %}<button class="btn ghost small" aria-label="Удалить контакт {{ c.name }}">Удалить</button></form></div>{% endfor %}
+</details>
+{% endblock %}

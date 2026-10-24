@@ -25,6 +25,7 @@ services:
       - .:/app
     ports:
       - "8000:8000"
+    env_file: .env
     environment:
       DATABASE_URL: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -38,8 +39,8 @@ services:
     command: python manage.py process_alerts --loop --interval 60
     volumes:
       - .:/app
-    environment:
-      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+    env_file: .env          # ALERT_CHANNELS, TELEGRAM_BOT_TOKEN, PUBLIC_BASE_URL и т. д.
+    restart: unless-stopped
     depends_on:
       db:
         condition: service_healthy
@@ -47,6 +48,7 @@ services:
   backup:          # копия базы каждые 15 минут в папку ./backups, хранится сутки
     image: postgres:16-alpine
     command: /bin/sh /ops/backup.sh
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}

@@ -1,0 +1,178 @@
+{% extends "web/doctor/base.html" %}
+{% load static %}
+{% block title %}{{ p.last_name }} {{ p.first_name }} — Лямбда{% endblock %}
+{% block head %}<script src="{% static 'web/vendor/chart.umd.js' %}" defer></script><script src="{% static 'web/patient-charts.js' %}" defer></script>{% endblock %}
+{% block main %}
+{% if via_escalation %}<div class="flash warning">Вы открыли карточку как резервный врач: ведущий врач {{ link.doctor.user.get_full_name }} не отреагировал на срочный сигнал. Доступ временный — до закрытия сигнала.</div>{% endif %}
+<a class="text-action back-link" href="/doctor/">← Все пациенты</a>
+<header class="card-head">
+  <div>
+    <h1>{{ p.last_name }} {{ p.first_name }} {{ p.middle_name }}</h1>
+    <div class="facts">
+      <span><b>{{ age }}</b> лет, {{ p.get_sex_display|lower }}</span>
+      {% for d in dx %}<span><b>{{ d.icd10 }}</b> {{ d.title }}</span>{% endfor %}
+      {% if p.is_pregnant %}<span><b>беременность</b></span>{% endif %}
+      {% if p.post_covid %}<span>после COVID-19</span>{% endif %}
+      {% if p.egfr %}<span>СКФ <b>{{ p.egfr|floatformat:0 }}</b></span>{% endif %}
+      {% if p.child_pugh_class %}<span>Чайлд-Пью <b>{{ p.child_pugh_class }}</b></span>{% endif %}
+      {% for c in conds %}<span>{{ c }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="card-tools">
+    <a class="btn ghost small" href="/doctor/patient/{{ p.public_id }}/import/">Загрузить выписку</a>
+    {% if not p.user_id %}<div class="small muted" style="margin-top:8px">Код для пациента: <b style="color:var(--ink);font-size:16px">{{ link.invite_code }}</b></div>{% endif %}
+  </div>
+</header>
+
+<nav class="card-sections" aria-label="Разделы карточки">
+  {% if alerts %}<a href="#h-alerts">Сигналы <span>{{ alerts|length }}</span></a>{% endif %}
+  <a href="#h-route">Решения врача</a><a href="#h-rx">Терапия</a>
+  <a href="#h-dyn">Динамика</a><a href="#messages">Сообщения</a>
+</nav>
+{% if alerts %}
+<section class="panel patient-alerts" aria-labelledby="h-alerts">
+  <div class="section-heading"><h2 id="h-alerts">Сигналы пациента</h2><span class="small muted">{{ alerts|length }} открытых</span></div>
+  <p class="small muted">Отметка о просмотре фиксирует вашу реакцию. Она не заменяет помощь пациенту.</p>
+  {% for a in alerts %}{% include "web/doctor/_alert.html" %}{% endfor %}
+</section>
+{% endif %}
+<div class="patient-card-grid">
+<div class="clinical-column">
+  <div class="column-label">{% include "web/_icon.html" with name="shield" %} Решения и лечение</div>
+  <section class="panel" aria-labelledby="h-route">
+    <h2 id="h-route">{% if is_psychiatrist %}Оценка состояния{% else %}Консультация психиатра{% endif %}</h2><p class="small muted">По шкалам и записям пациента</p>
+    {% if referral_done and not referrals %}
+      <div class="sig ok"><span class="tag">Оформлено</span><div class="title">Направление к психиатру оформлено {{ referral_done.created_at|date:"d.m.Y" }}</div>
+        <div class="meta">Срочность: {{ referral_done.get_urgency_display|lower }}. Система продолжает отслеживать состояние.</div></div>
+    {% elif referrals or routing.urgency %}
+      {% with urg=routing.urgency %}
+      <div class="sig {% if referrals.0.urgency == 'mandatory' or urg == 'mandatory' %}mandatory{% else %}desirable{% endif %}">
+        <span class="tag">{% if referrals.0.urgency == 'mandatory' or urg == 'mandatory' %}Обязательно{% else %}Желательно{% endif %}</span>
+        <div class="title">{% if is_psychiatrist %}Тяжесть состояния требует пересмотра плана{% else %}Направить к психиатру{% endif %}</div>
+        <div class="meta">
+          <ul style="margin:4px 0 0;padding-left:18px">
+          {% if not routing.reasons %}{% for ref in referrals %}{% for r in ref.reasons %}<li>{% firstof r.title r.reason %}</li>{% endfor %}{% endfor %}{% endif %}
+          {% for r in routing.reasons %}<li>{{ r.reason }}{% if r.urgency == "desirable" %} (желательно){% endif %}<br><span style="opacity:.85">Источник: {{ r.source }}</span></li>{% endfor %}
+          </ul>
+          {% for r in routing.reasons %}{% if r.action %}<p style="margin:6px 0 0"><b>{{ r.action }}</b></p>{% endif %}{% endfor %}
+        </div>
+        {% if not is_psychiatrist %}
+        <div class="actions">
+          {% if referrals %}
+            {% with ref=referrals.0 %}
+            <form method="post" action="/doctor/patient/{{ p.public_id }}/referral/{{ ref.id }}/" style="display:flex;gap:8px;flex-wrap:wrap">{% csrf_token %}
+              <button class="btn small" name="decision" value="confirm">Оформить направление</button>
+              <input type="text" name="rationale" placeholder="Причина, если не направляете" aria-label="Причина отказа" style="flex:1 1 200px;min-height:32px;padding:4px 8px">
+              <button class="btn ghost small" name="decision" value="reject">Не направлять</button>
+            </form>
+            {% endwith %}
+          {% else %}
+            <form method="post" action="/doctor/patient/{{ p.public_id }}/route/">{% csrf_token %}<button class="btn small">Оформить направление</button></form>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% endwith %}
+    {% else %}
+      <div class="sig ok"><span class="tag">По доступным данным</span><div class="title">Система не выявила оснований для направления</div><div class="meta">Проверка учитывает заполненные шкалы, ответ на терапию и записи пациента. Отсутствие сигнала не заменяет оценку врача.</div></div>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="h-av">
+    <h2 id="h-av">Авиандр <span class="muted">маритупирдин, {{ aviandr.dosing }}</span></h2>
+    {% if aviandr.on_aviandr %}<p><span class="light green">Пациент принимает Авиандр</span></p>{% endif %}
+    <p><span class="light {{ aviandr.verdict }}">{% if aviandr.verdict == "red" %}Есть противопоказания по инструкции{% elif aviandr.verdict == "yellow" %}Можно с осторожностью — проверьте предупреждения{% else %}Противопоказаний и взаимодействий не найдено{% endif %}</span></p>
+    {% for f in aviandr.findings %}
+      <div class="sig {{ f.level }}">
+        <span class="tag">{% if f.level == "contraindication" %}Противопоказание{% elif f.level == "off_label" %}Вне инструкции{% else %}Осторожно{% endif %}</span>
+        <div class="title">{{ f.text }}</div>
+        <div class="meta">{{ f.source }}</div>
+      </div>
+    {% endfor %}
+    <details class="more"><summary>Что сказать пациенту</summary>
+      <ul>{% for w in aviandr.warnings %}<li>{{ w.text }}</li>{% endfor %}</ul>
+    </details>
+    {% if not aviandr.on_aviandr %}
+    <form method="post" action="/doctor/patient/{{ p.public_id }}/aviandr/" style="margin-top:8px">{% csrf_token %}
+      <div class="field-row">
+        <div><label for="id_start_date">Начало приёма</label>{{ prescribe_form.start_date }}</div>
+      </div>
+      <label for="id_rationale">Комментарий врача{% if aviandr.verdict != "green" %} (обязателен){% endif %}</label>{{ prescribe_form.rationale }}
+      {% if aviandr.verdict == "red" %}<label class="check">{{ prescribe_form.override }} <span>Принимаю решение вне инструкции под свою ответственность</span></label>{% endif %}
+      <p style="margin-top:12px"><button class="btn">Назначить Авиандр</button></p>
+      <p class="small muted">Система не назначает сама: назначение появится у пациента только после вашего подтверждения.</p>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="h-rx">
+    <h2 id="h-rx">Текущая терапия</h2>{% if adh %}<p class="small muted">Отмеченный приём за 2 недели: {{ adh.pct }}%. Пропущено: {{ adh.missed }} · Не отмечено: {{ adh.unmarked }}</p>{% endif %}
+    {% for r in rx %}
+      <div class="prescription-row">
+        <div><b>{{ r.drug_name }}</b> {{ r.dose_mg|floatformat:"-1" }} мг × {{ r.times_per_day }} р/сут<div class="small muted">с {{ r.start_date|date:"d.m.Y" }}{% if r.off_label %}, вне инструкции{% endif %}{% if r.comment %}. {{ r.comment }}{% endif %}</div></div>
+        <form method="post" action="/doctor/patient/{{ p.public_id }}/rx/{{ r.id }}/stop/">{% csrf_token %}<button class="btn ghost small">Отменить</button></form>
+      </div>
+    {% empty %}<p class="muted">Активных назначений нет.</p>{% endfor %}
+    {% if adh %}<div class="meter" style="margin-top:12px"><span style="width:{{ adh.pct }}%"></span></div>{% endif %}
+    {% if rx_stopped %}<p class="small muted" style="margin-top:8px">Отменены: {% for r in rx_stopped %}{{ r.drug_name }} ({{ r.end_date|date:"d.m.Y" }}){% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  </section>
+
+  {% if contacts %}
+  <section class="panel"><h2>Кому можно позвонить</h2>
+    <p class="small muted">Пациент разрешил связаться с этими людьми, если ему срочно нужна помощь.</p>
+    {% for c in contacts %}<div>{{ c.name }}{% if c.relation %} ({{ c.relation }}){% endif %} — <a href="tel:{{ c.phone }}">{{ c.phone }}</a></div>{% endfor %}
+  </section>
+  {% endif %}
+</div>
+
+<div class="observation-column">
+  <div class="column-label">{% include "web/_icon.html" with name="activity" %} Наблюдение и связь</div>
+  <section class="panel" aria-labelledby="h-dyn">
+    <h2 id="h-dyn">Динамика по шкалам <span class="muted">PHQ-9 — депрессия, GAD-7 — тревога</span></h2>
+    <div class="scale-summaries">
+      <div><span>PHQ-9 · депрессия</span><strong>{% if latest_phq %}{{ latest_phq.total }}<small> / 27</small>{% else %}—{% endif %}</strong><span>{% if latest_phq %}{{ latest_phq.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+      <div><span>GAD-7 · тревога</span><strong>{% if latest_gad %}{{ latest_gad.total }}<small> / 21</small>{% else %}—{% endif %}</strong><span>{% if latest_gad %}{{ latest_gad.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+    </div>
+    {% if chart.phq9 or chart.gad7 %}<div class="chart-box"><canvas id="ch-scales" role="img" aria-label="Динамика PHQ-9 и GAD-7 за последние 90 дней. Последние результаты указаны выше."></canvas></div>{% else %}<p class="chart-empty">График появится после заполнения опросника.</p>{% endif %}
+    <p class="src">Результаты опросников за последние 90 дней. Баллы шкал не являются диагнозом.</p>
+  </section>
+  <section class="panel" aria-labelledby="h-diary">
+    <h2 id="h-diary">Дневник пациента <span class="muted">настроение и тревога, 0–10</span></h2>
+    {% if last_checkin %}<div class="chart-box"><canvas id="ch-diary" role="img" aria-label="Динамика настроения и тревоги. Последняя запись приведена ниже."></canvas></div><p class="src">Настроение: 10 — лучше. Тревога: 10 — сильнее. До 30 последних записей.</p>{% else %}<p class="chart-empty">Пациент ещё не заполнял дневник.</p>{% endif %}
+    {% if last_checkin %}
+    <dl class="kv small" style="margin-top:12px">
+      <dt>Последняя запись</dt><dd>{{ last_checkin.created_at|date:"d.m H:i" }}</dd>
+      <dt>Настроение / тревога</dt><dd>{{ last_checkin.mood }} / {{ last_checkin.anxiety }} из 10</dd>
+      <dt>Сон</dt><dd>{% if last_checkin.sleep_hours != None %}{{ last_checkin.sleep_hours|floatformat:"-1" }}{% else %}—{% endif %} ч</dd>
+      <dt>Выходил из дома / ел</dt><dd>{{ last_checkin.left_home|yesno:"да,нет,—" }} / {{ last_checkin.ate_normally|yesno:"да,нет,—" }}</dd>
+      <dt>Алкоголь</dt><dd>{{ last_checkin.alcohol_units }} порц.</dd>
+      {% if last_checkin.side_effects %}<dt>Нежелательные явления</dt><dd>{{ last_checkin.side_effects|join:", " }}</dd>{% endif %}
+      {% if last_checkin.text %}<dt>Своими словами</dt><dd>«{{ last_checkin.text }}»</dd>{% endif %}
+    </dl>
+    {% endif %}
+  </section>
+
+  <section class="panel" id="messages" aria-labelledby="h-msg">
+    <h2 id="h-msg">Сообщения</h2>
+    {% if extra_visit %}<div class="sig desirable"><span class="tag">Желательно</span><div class="title">Много обращений за неделю</div><div class="meta">Возможно, стоит предложить дополнительный приём</div></div>{% endif %}
+    <div class="thread">
+      {% for m in thread %}<div class="msg {% if m.sender_id == request.user.id %}mine{% endif %}">{{ m.text|linebreaksbr }}<time>{{ m.created_at|date:"d.m H:i" }}</time></div>{% empty %}<p class="muted">Переписки пока нет.</p>{% endfor %}
+    </div>
+    <form method="post" action="/doctor/patient/{{ p.public_id }}/message/" class="message-compose">{% csrf_token %}
+      <input type="text" name="text" placeholder="Сообщение пациенту" aria-label="Сообщение пациенту" required>
+      <button class="btn">Отправить</button>
+    </form>
+    <p class="small muted" style="margin-top:6px">Изменение лечения по переписке возможно, только если диагноз установлен на очном приёме (323-ФЗ, ст. 36.2).</p>
+  </section>
+
+  {% if decisions %}
+  <section class="panel"><h2>Решения врача</h2>
+    {% for d in decisions %}<div class="small" style="padding:4px 0">{{ d.created_at|date:"d.m H:i" }} — {{ d.get_kind_display }}{% if d.payload.drug %}: {{ d.payload.drug }}{% endif %}{% if d.rationale %}. {{ d.rationale }}{% endif %}</div>{% endfor %}
+  </section>
+  {% endif %}
+
+</div>
+</div>
+
+{{ chart|json_script:"chart-data" }}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "web/base.html" %}
+{% block body %}
+<div class="pt">
+  <header class="pt-top"><a class="brand-lockup" href="/me/" aria-label="Лямбда — главная"><span class="brand-symbol">{% include "web/_icon.html" with name="compass" %}</span><span><strong>Лямбда</strong><small>Личный кабинет</small></span></a><a class="sos" href="/me/help/">{% include "web/_icon.html" with name="help" %}Мне плохо</a></header>
+  <main id="main-content"><div class="pt-welcome"><h1>{% block heading %}{% endblock %}</h1></div>{% include "web/_flash.html" %}{% block main %}{% endblock %}</main>
+</div>
+<nav class="tabs" aria-label="Разделы пациента">
+  <a href="/me/" {% if tab == "home" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="calendar" %}<span>Сегодня</span></a>
+  <a href="/me/meds/" {% if tab == "meds" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="pill" %}<span>Лекарства</span></a>
+  <a href="/me/progress/" {% if tab == "progress" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="activity" %}<span>Динамика</span></a>
+  <a href="/me/chat/" {% if tab == "chat" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="chat" %}<span>Врач</span></a>
+  <a href="/me/help/" {% if tab == "help" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="help" %}<span>Помощь</span></a>
+</nav>
+<script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});</script>
+{% endblock %}

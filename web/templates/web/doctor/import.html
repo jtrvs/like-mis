@@ -1,0 +1,43 @@
+{% extends "web/doctor/base.html" %}
+{% load static %}
+{% block head %}<script src="{% static 'web/import-review.js' %}" defer></script>{% endblock %}
+{% block title %}Загрузка выписки — Лямбда{% endblock %}
+{% block main %}
+<a class="text-action back-link" href="/doctor/patient/{{ p.public_id }}/">← К карточке: {{ p.last_name }} {{ p.first_name }}</a>
+<header class="import-heading"><div><p class="eyebrow">Данные пациента</p><h1>Загрузка выписки</h1><p class="muted">{{ p.last_name }} {{ p.first_name }} {{ p.middle_name }}</p></div><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span></header>
+<ol class="import-steps" aria-label="Этапы переноса выписки"><li {% if not data %}aria-current="step"{% endif %}><span>1</span> Вставьте текст</li><li {% if data %}aria-current="step"{% endif %}><span>2</span> Проверьте найденное</li><li><span>3</span> Подтвердите перенос</li></ol>
+{% if not data %}
+<div class="import-start"><form method="post" class="panel">{% csrf_token %}
+  <h2>Текст документа</h2><p class="small muted">Скопируйте текст эпикриза, записи приёма или направления. Убедитесь, что документ относится к пациенту в заголовке. Загрузка PDF и фотографий здесь не предусмотрена.</p>
+  {% if form.errors %}<div class="flash error" role="alert">Вставьте текст для разбора. {{ form.text.errors }}</div>{% endif %}
+  <label for="id_text">Текст выписки или истории болезни</label>{{ form.text }}
+  <div class="import-actions"><button class="btn">Разобрать текст</button><a class="btn ghost" href="/doctor/patient/{{ p.public_id }}/">Вернуться в карточку</a></div>
+</form><aside class="panel import-explanation"><span class="soft-icon mint">{% include "web/_icon.html" with name="shield" %}</span><h2>Сначала проверка</h2><p>На следующем шаге появятся найденные сведения. Сверьте их с исходным текстом и снимите отметки с того, что не нужно переносить.</p><p>До подтверждения карточка пациента не изменится. Система может пропустить сведения или разобрать их неверно.</p></aside></div>
+{% else %}
+<div class="import-review"><form method="post" class="panel">{% csrf_token %}
+  <input type="hidden" name="apply" value="1">
+  {% if apply_error %}<div class="flash error" role="alert">Перенос не выполнен. Проверьте даты и сообщения у выбранных препаратов. Остальные сведения тоже пока не сохранены.</div>{% endif %}
+  <div class="section-heading"><h2>Проверьте найденные сведения</h2><span class="status-badge neutral">Ещё не сохранено</span></div>
+  <p class="small muted">В карточку попадут только отмеченные сведения. Сверьте ФИО пациента и проверьте, к какому времени относятся назначения и результаты.</p>
+  {% if data.suicidal_risk %}<div class="sig critical"><span class="tag">Срочно</span><div class="title">В тексте есть указания на суицидальный риск</div><div class="meta">Проверьте формулировку в исходном тексте</div></div>{% endif %}
+  <section class="import-group"><h3>Диагнозы</h3>
+  {% for c in data.diagnoses %}<label class="check"><input type="checkbox" name="dx" value="{{ c }}" {% if not apply_error or c in selected_dx %}checked{% endif %}> <span>{{ c }}</span></label>{% empty %}<p class="empty-note">Не найдены. Это не означает, что диагнозов нет.</p>{% endfor %}</section>
+  <section class="import-group"><h3>Текущие препараты</h3>
+  <p class="small muted">Модуль разбора не определяет даты. Для выбранного препарата укажите начало приёма по выписке. Если дата неизвестна, снимите отметку и уточните сведения.</p>
+  {% for row in current_rows %}<div class="import-medication" data-import-medication>
+    <label class="check"><input type="checkbox" name="med" value="{{ row.index }}" {% if row.selected %}checked{% endif %} {% if not row.enabled %}disabled{% endif %}><span><b>{{ row.medication.inn }}</b> — {{ row.medication.dose_mg|default:"доза не указана" }} мг × {{ row.medication.times_per_day|default:"кратность не указана" }} р/сут{% if not row.enabled %}<small class="import-missing">Нельзя перенести: не хватает дозы или кратности.</small>{% endif %}</span></label>
+    {% if row.enabled %}<div class="import-date-fields">{{ row.form.non_field_errors }}<label for="{{ row.form.start_date.id_for_label }}">{{ row.form.start_date.label }}</label>{{ row.form.start_date }}{{ row.form.start_date.errors }}</div>{% endif %}
+  </div>{% empty %}<p class="empty-note">Не найдены.</p>{% endfor %}</section>
+  {% if stopped_rows %}<section class="import-group"><h3>Отменённые ранее препараты</h3><p class="small muted">Подтвердите даты начала и отмены по выписке. Если дат нет, снимите отметку. Историческая запись не отменяет действующее назначение в карточке.</p>
+  {% for row in stopped_rows %}<div class="import-medication" data-import-medication><label class="check"><input type="checkbox" name="stopped" value="{{ row.index }}" {% if row.selected %}checked{% endif %}><span>{{ row.name }}</span></label><div class="import-date-fields">{{ row.form.non_field_errors }}{% for field in row.form %}<label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}{% endfor %}</div></div>{% endfor %}</section>{% endif %}
+  <section class="import-group"><h3>Факторы для проверки безопасности</h3>
+  {% for code, label in conds %}<label class="check"><input type="checkbox" name="cond" value="{{ code }}" {% if not apply_error or code in selected_cond %}checked{% endif %}> <span>{{ label }}</span></label>{% endfor %}
+  {% if data.egfr %}<label class="check"><input type="checkbox" name="egfr" value="1" {% if not apply_error or selected_egfr %}checked{% endif %}> <span>СКФ {{ data.egfr }}</span></label>{% endif %}
+  {% if data.child_pugh %}<label class="check"><input type="checkbox" name="child_pugh" value="1" {% if not apply_error or selected_child_pugh %}checked{% endif %}> <span>Чайлд-Пью {{ data.child_pugh }}</span></label>{% endif %}
+  {% if data.pregnant %}<label class="check"><input type="checkbox" name="pregnant" value="1" {% if not apply_error or selected_pregnant %}checked{% endif %}> <span>Беременность</span></label>{% endif %}
+  {% if not conds and not data.egfr and not data.child_pugh and not data.pregnant %}<p class="empty-note">Не найдены. Проверьте исходный текст.</p>{% endif %}</section>
+  {% if data.scales %}<section class="import-group"><h3>Шкалы в тексте</h3><p>{% for k, v in data.scales.items %}{{ k|upper }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</p><p class="small muted">Показаны для сверки. В историю опросников эти баллы автоматически не переносятся.</p></section>{% endif %}
+  <div class="import-actions"><button class="btn">Перенести отмеченное в карточку</button><a class="btn ghost" href="/doctor/patient/{{ p.public_id }}/import/">Разобрать другой текст</a></div>
+</form><aside class="panel import-original"><h2>Исходный текст</h2><p class="small muted">Сверьте с ним выделенные сведения до подтверждения.</p><div class="original-document" tabindex="0" aria-label="Исходный текст выписки, область прокрутки">{{ form.text.value|default_if_none:"" }}</div></aside></div>
+{% endif %}
+{% endblock %}

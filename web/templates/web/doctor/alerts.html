@@ -1,0 +1,6 @@
+{% extends "web/doctor/base.html" %}
+{% block title %}Сигналы — Лямбда{% endblock %}
+{% block main %}
+<div class="page-head"><div><h1>Сигналы</h1><p class="muted" style="margin:0">Срочные приходят ещё и в мессенджер. Без отметки «просмотрен» через 15 минут — повтор, затем передача резервному врачу.</p></div></div>
+{% for a in alerts %}{% include "web/doctor/_alert.html" with show_patient=1 %}{% empty %}<p>Сигналов нет.</p>{% endfor %}
+{% endblock %}

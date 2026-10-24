@@ -1,0 +1,20 @@
+{% extends "web/base.html" %}
+{% block title %}Регистрация по коду врача{% endblock %}
+{% block body %}
+<main class="auth" id="main-content">
+  <div class="mark">Лямбда</div>
+  <p class="muted">Код связывает ваш дневник с карточкой у лечащего врача. Записи видит только он.</p>
+  {% include "web/_flash.html" %}
+  {% if locked %}<div class="flash error">Слишком много неверных кодов. Попробуйте через 15 минут или уточните код у врача.</div>{% endif %}
+  <form method="post" novalidate>{% csrf_token %}
+    {% for f in form %}
+      {% if f.field.widget.input_type == "checkbox" %}
+        <label class="check">{{ f }} <span>{{ f.label }}</span></label>{{ f.errors }}
+      {% else %}
+        <label for="{{ f.id_for_label }}">{{ f.label }}</label>{{ f }}{% if f.help_text %}<div class="small muted">{{ f.help_text }}</div>{% endif %}{{ f.errors }}
+      {% endif %}
+    {% endfor %}
+    <p style="margin-top:20px"><button class="btn block" type="submit">Зарегистрироваться</button></p>
+  </form>
+</main>
+{% endblock %}

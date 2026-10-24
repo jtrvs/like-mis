@@ -1,7 +1,8 @@
 """
 Каналы доставки сигнала врачу. Новый канал = новый класс в REGISTRY, остальной код не меняется.
 Секреты (токен бота, почта) — только из переменных окружения.
-В мессенджер и почту НЕ уходят ФИО и диагноз (152-ФЗ) — только метка пациента и ссылка.
+В мессенджер и почту НЕ уходят ФИО, диагноз и суть сигнала (152-ФЗ: сведения о здоровье) — только уровень,
+метка пациента и ссылка в кабинет.
 """
 import json
 import logging
@@ -24,9 +25,10 @@ class Channel:
 
     @staticmethod
     def text(alert):
+        # В сторонний мессенджер — только факт сигнала, метка и ссылка. Что именно случилось (это сведения о здоровье),
+        # врач видит после входа в кабинет.
         base = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
-        link = f"{base}{alert.card_url}" if alert.card_url else f"{base}/alerts/"
-        return f"[{alert.get_severity_display()}] {alert.title}\nПациент: {alert.patient_label}\nОткрыть: {link}"
+        return f"Лямбда: новый сигнал «{alert.get_severity_display()}», пациент {alert.patient_label}.\nОткрыть: {base}/alerts/#alert-{alert.id}"
 
 
 class InApp(Channel):
@@ -56,7 +58,7 @@ class Email(Channel):
         to = self.recipient(user)
         if not to:
             raise RuntimeError("у врача не указан e-mail")
-        send_mail(f"Лямбда: {alert.title}", self.text(alert), None, [to], fail_silently=False)
+        send_mail(f"Лямбда: новый сигнал «{alert.get_severity_display()}»", self.text(alert), None, [to], fail_silently=False)
 
 
 class Telegram(Channel):

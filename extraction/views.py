@@ -36,8 +36,12 @@ def extract_view(request):
         return JsonResponse({"error": "текст длиннее 100 000 символов"}, status=413)
     log.info("extract by user %s, %s chars", request.user.id, len(text))
     data = extract(text)
+    # Если в выписке беременность/ГВ не упомянуты, это «неизвестно», а не «нет» (кроме мужчин) — не даём ложный «зелёный».
+    is_male = data["sex"] == "M"
     ctx = {
-        "age": data["age"], "pregnant": data["pregnant"], "breastfeeding": data["breastfeeding"],
+        "age": data["age"],
+        "pregnant": True if data["pregnant"] else (False if is_male else None),
+        "breastfeeding": True if data["breastfeeding"] else (False if is_male else None),
         "egfr": data["egfr"], "child_pugh": data["child_pugh"] or "", "conditions": data["conditions"],
         "icd10": data["diagnoses"], "current_drugs": [m["inn"] for m in data["medications"]],
         "stopped_drugs": [{"name": n, "days_ago": 0} for n in data["stopped_medications"]],  # дата отмены неизвестна — считаем недавней

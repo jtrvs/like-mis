@@ -21,4 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('', include('alerts.urls')),      # /alerts/, /api/alerts/
     path('', include('extraction.urls')),  # /api/extract
+    path('', include('web.urls')),         # экраны врача (/doctor/) и пациента (/me/), вход (/login/)
 ]

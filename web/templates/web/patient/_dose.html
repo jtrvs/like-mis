@@ -1,0 +1,12 @@
+<div class="dose" id="dose-{{ d.id }}">
+  <div><b>{{ d.scheduled_at|date:"H:i" }}</b> {{ d.prescription.drug_name }} {{ d.prescription.dose_mg|floatformat:"-1" }} мг<div class="small muted">{{ d.scheduled_at|date:"d.m" }}</div></div>
+  {% if d.taken is True %}<span class="state-yes">Принято</span>
+  {% elif d.taken is False %}<span class="state-no">Пропущено</span>
+  {% else %}
+  <form method="post" action="/me/meds/{{ d.id }}/" hx-post="/me/meds/{{ d.id }}/" hx-target="#dose-{{ d.id }}" hx-swap="outerHTML" style="display:flex;gap:6px">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <button class="btn small" name="taken" value="1">Принял</button>
+    <button class="btn ghost small" name="taken" value="0">Пропустил</button>
+  </form>
+  {% endif %}
+</div>

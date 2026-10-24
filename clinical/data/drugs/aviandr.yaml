@@ -39,8 +39,8 @@ contraindications:
   - {id: epilepsy, condition: epilepsy, text: "Эпилепсия"}
   - {id: organic_brain, condition: organic_brain_disease, text: "Органические заболевания головного мозга"}
   - {id: maoi, drug_class: maoi, washout_days: 14, text: "Одновременный приём ингибиторов МАО и 2 недели после их отмены"}
-  - {id: renal, egfr_below: 60, text: "Почечная недостаточность средней и тяжёлой степени (СКФ < 60 мл/мин)"}
-  - {id: hepatic, child_pugh: [A, B, C], text: "Печёночная недостаточность (классы A, B, C по Чайлд-Пью)"}
+  - {id: renal, egfr_below: 60, condition: renal_failure, text: "Почечная недостаточность средней и тяжёлой степени (СКФ < 60 мл/мин)"}
+  - {id: hepatic, child_pugh: [A, B, C], condition: hepatic_failure, text: "Печёночная недостаточность (классы A, B, C по Чайлд-Пью)"}
   - {id: pregnancy, pregnant: true, text: "Беременность"}
   - {id: lactation, breastfeeding: true, text: "Период грудного вскармливания (при необходимости приёма вскармливание прекращают)"}
   - {id: age, age_below: 18, text: "Возраст до 18 лет"}

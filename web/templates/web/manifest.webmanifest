@@ -1,0 +1,5 @@
+{"id": "/me/", "name": "Лямбда", "short_name": "Лямбда", "start_url": "/me/", "scope": "/", "display": "standalone", "lang": "ru",
+ "background_color": "#F7F6F9", "theme_color": "#705681",
+ "icons": [{"src": "/static/web/icon-192.png", "sizes": "192x192", "type": "image/png"},
+           {"src": "/static/web/icon-512.png", "sizes": "512x512", "type": "image/png"},
+           {"src": "/static/web/icon.svg", "sizes": "any", "type": "image/svg+xml"}]}

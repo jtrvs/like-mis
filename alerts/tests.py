@@ -69,16 +69,93 @@ class AlertFlow(TestCase):
         self.ev("schedule", facts.from_intakes(intakes, now))
         self.assertTrue(Alert.objects.filter(rule_id="diary_abandoned").exists())
 
-    def test_retry_then_escalate_then_backup_sees_it(self):
-        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
-        a = Alert.objects.get()
-        for _ in range(3):
+    def tick(self, a, n=1):
+        for _ in range(n):
             a.deliveries.update(sent_at=timezone.now() - timedelta(minutes=30))
             service.process_pending()
         a.refresh_from_db()
-        self.assertEqual((a.status, a.retries, a.escalated_to), ("escalated", 2, self.backup))
+
+    def test_retry_then_escalate_then_backup_sees_it(self):
+        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
+        a = Alert.objects.get()
+        self.tick(a, 3)
+        self.assertEqual((a.status, a.retries, a.escalated_to), ("escalated", 0, self.backup))
         self.assertIn(a, service.visible_to(self.backup))
         self.assertNotIn(a, service.visible_to(self.other))
+
+    def test_backup_gets_retries_then_unanswered_logged(self):
+        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
+        a = Alert.objects.get()
+        self.tick(a, 5)  # 2 повтора ведущему, эскалация, 2 повтора резервному
+        self.assertEqual((a.escalated_to, a.retries), (self.backup, 2))
+        self.assertEqual(a.deliveries.filter(channel="inapp").count(), 6)
+        with self.assertLogs("alerts", level="CRITICAL"):
+            self.tick(a)
+        self.assertIsNotNone(a.exhausted_at)
+
+    def test_no_backup_unanswered_logged(self):
+        service.report_event(patient_id=7, patient_label="П-7", doctor=self.doc, trigger="scale",
+                             facts=facts.from_scale("phq9", [0] * 8 + [1]))
+        a = Alert.objects.get()
+        self.tick(a, 2)
+        with self.assertLogs("alerts", level="CRITICAL"):
+            self.tick(a)
+
+    def test_worker_does_not_overwrite_ack(self):
+        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
+        a = Alert.objects.get()
+        stale = Alert.objects.get(id=a.id)  # «фоновый процесс» прочитал строку
+        service.acknowledge(a, self.doc, "позвонил")
+        stale.retries = 99
+        # условное обновление: закрытый сигнал не трогается
+        self.assertEqual(Alert.objects.filter(id=a.id, status__in=["delivered", "escalated"]).update(status="escalated"), 0)
+        a.refresh_from_db()
+        self.assertEqual(a.status, "acknowledged")
+
+    def test_second_ack_keeps_first(self):
+        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
+        a = Alert.objects.get()
+        self.assertTrue(service.acknowledge(a, self.doc, "первый"))
+        self.assertFalse(service.acknowledge(a, self.backup, "второй"))
+        a.refresh_from_db()
+        self.assertEqual((a.resolution, a.acknowledged_by), ("первый", self.doc))
+
+    def test_db_blocks_duplicate_open_alert(self):
+        from django.db import IntegrityError, transaction
+        self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
+        a = Alert.objects.get()
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Alert.objects.create(patient_id=a.patient_id, patient_label="x", doctor=self.doc, rule_id=a.rule_id,
+                                 severity="critical", title="t", source_received_at=timezone.now())
+
+    def test_bad_trigger_and_fio_label_rejected(self):
+        with self.assertRaises(ValueError):
+            self.ev("messages", text="хочу умереть")
+        with self.assertRaises(ValueError):
+            service.report_event(patient_id=1, patient_label="Иванова Анна", doctor=self.doc, trigger="message")
+
+    def test_messenger_text_has_no_health_data(self):
+        self.ev("message", text="хочу умереть")
+        from alerts.channels import Channel
+        t = Channel.text(Alert.objects.get())
+        self.assertNotIn("суицид", t.lower())
+        self.assertIn("П-1", t)
+
+    def test_naive_datetime_in_facts(self):
+        from datetime import datetime
+        f = facts.from_intakes([{"scheduled_at": datetime(2026, 10, 1, 9), "taken": None}] * 6)
+        self.ev("schedule", {**f, "when": datetime(2026, 10, 1)})  # datetime в фактах не ломает сохранение
+        self.assertTrue(Alert.objects.filter(rule_id="diary_abandoned").exists())
+
+    def test_worker_survives_missing_tables(self):
+        from unittest import mock
+        from django.core.management import call_command
+        with mock.patch("alerts.service.process_pending", side_effect=RuntimeError("db down")):
+            call_command("process_alerts", stdout=open("/dev/null", "w"))  # не падает
+
+    def test_bad_patient_id_param(self):
+        self.client.login(username="doc", password="x")
+        self.assertEqual(self.client.get("/api/alerts/?patient_id=abc").status_code, 400)
 
     def test_ack_stops_retries(self):
         self.phq([0, 0, 0, 0, 0, 0, 0, 0, 2])
@@ -99,6 +176,10 @@ class AlertFlow(TestCase):
         self.client.login(username="doc", password="x")
         self.assertEqual(len(self.client.get("/api/alerts/?open=1").json()["alerts"]), 1)
         self.assertEqual(self.client.get("/alerts/").status_code, 200)
+        User.objects.create_user("admin", password="x", is_staff=True)  # админ без роли врача — не врач
+        self.client.login(username="admin", password="x")
+        self.assertEqual(self.client.get("/api/alerts/").status_code, 403)
+        self.client.login(username="doc", password="x")
         r = self.client.post(f"/api/alerts/{a.id}/ack/", '{"resolution": "звонок"}', content_type="application/json")
         self.assertEqual(r.json()["alert"]["status"], "acknowledged")
 

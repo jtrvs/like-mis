@@ -1,0 +1,25 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Сегодня — Лямбда{% endblock %}
+{% block heading %}Здравствуйте, {{ p.first_name }}{% endblock %}
+{% block main %}
+<p class="today-date">{% now "j E, l" %}</p>
+<section class="checkin-hero" aria-labelledby="checkin-title">
+  <div class="checkin-hero-top"><span class="eyebrow">Дневник самочувствия</span><span class="hero-heart" aria-hidden="true">{% include "web/_icon.html" with name="heart" %}</span></div>
+  <h2 id="checkin-title">Как вы сегодня?</h2>
+  {% if checked_today %}<p>Запись за сегодня сохранена.<br>Если что-то изменилось, добавьте ещё одну.</p><a class="btn" href="/me/checkin/">Добавить запись {% include "web/_icon.html" with name="plus" %}</a>
+  {% else %}<p>Отметьте настроение, тревогу и сон.<br>Запись появится в вашей карточке у врача.</p><a class="btn" href="/me/checkin/">Отметить самочувствие {% include "web/_icon.html" with name="arrow" %}</a>{% endif %}
+  <span class="hero-time">{% include "web/_icon.html" with name="clock" %}Около минуты</span>
+</section>
+{% if unread %}<a class="task message-task" href="/me/chat/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="chat" %}</span><div><div class="t">Врач написал вам</div><div class="s">Непрочитанных сообщений: {{ unread }}</div></div>{% include "web/_icon.html" with name="chevron" %}</a>{% endif %}
+<section class="panel today-meds" aria-labelledby="meds-heading">
+  <div class="section-heading"><h2 id="meds-heading">Лекарства на сегодня</h2><a class="text-action" href="/me/meds/">Дневник {% include "web/_icon.html" with name="chevron" %}</a></div>
+  {% if doses %}{% for d in doses %}{% include "web/patient/_dose.html" %}{% endfor %}{% if adh %}<p class="adherence-note">{% include "web/_icon.html" with name="note" %}По вашим отметкам за неделю: принято {{ adh.taken }} из {{ adh.total }}.</p>{% endif %}
+  {% else %}<div class="meds-empty"><span class="soft-icon mint">{% include "web/_icon.html" with name="pill" %}</span><p>На сегодня приёмов не запланировано.</p></div>{% endif %}
+</section>
+{% if due %}<section class="today-questionnaires" aria-labelledby="questionnaires-heading"><div class="section-heading"><h2 id="questionnaires-heading">Пора заполнить опросники</h2></div>
+{% for code, title in due %}<a class="task" href="/me/scale/{{ code }}/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">{{ title }}</div><div class="s">Раз в 2 недели · около 2 минут</div></div><span class="go">Пройти {% include "web/_icon.html" with name="chevron" %}</span></a>{% endfor %}
+</section>{% endif %}
+<a class="task progress-task" href="/me/progress/"><span class="soft-icon mint">{% include "web/_icon.html" with name="activity" %}</span><div><div class="t">Ваша динамика</div><div class="s">Самочувствие и результаты опросников</div></div>{% include "web/_icon.html" with name="chevron" %}</a>
+{% if extra_visit %}<div class="flash warning">У вас много вопросов на этой неделе. Возможно, удобнее обсудить их на дополнительном приёме — напишите врачу.</div>{% endif %}
+<footer class="patient-home-footer"><p>План лечения меняет врач.</p><form method="post" action="/logout/">{% csrf_token %}<button class="text-button">{% include "web/_icon.html" with name="logout" %}Выйти</button></form></footer>
+{% endblock %}

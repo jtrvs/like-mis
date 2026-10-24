@@ -80,4 +80,38 @@ class SafetyIncompleteData(SimpleTestCase):
     def test_post_covid_indication(self):
         self.assertIn("no_indication", self.codes(icd10=["F43.9"]))
         self.assertNotIn("no_indication", self.codes(icd10=["F43.9"], post_covid=True))
-        self.assertIn("course_limit", self.codes(icd10=["F43.9"], post_covid=True, weeks_on_drug=7))
+        self.assertIn("course_exceeded", self.codes(icd10=["F43.9"], post_covid=True, weeks_on_drug=7))
+
+
+class ReviewRegressions(SimpleTestCase):
+    full = dict(age=34, pregnant=False, breastfeeding=False, egfr=95, child_pugh="", conditions=[], current_drugs=[], icd10=["F41.1"])
+
+    def v(self, **kw):
+        return safety.verdict(safety.check("aviandr", {**self.full, **kw}))
+
+    def test_liver_and_kidney_failure_without_class_are_red(self):
+        self.assertEqual(self.v(conditions=["hepatic_failure"]), "red")
+        self.assertEqual(self.v(conditions=["renal_failure"], egfr=None), "red")
+
+    def test_lowercase_child_pugh(self):
+        self.assertEqual(self.v(child_pugh="b"), "red")
+
+    def test_drug_names_with_dose(self):
+        self.assertEqual(self.v(stopped_drugs=[{"name": "Аурорикс 300 мг", "days_ago": 3}]), "red")
+        self.assertEqual(self.v(current_drugs=["Аурорикс 300 мг"]), "red")
+        self.assertEqual(self.v(current_drugs=["Золофт (сертралин) 50мг"]), "yellow")
+
+    def test_unknown_pregnancy_not_green(self):
+        self.assertEqual(self.v(pregnant=None), "yellow")
+        self.assertEqual(self.v(), "green")
+
+    def test_unknown_stopped_drug_flagged(self):
+        codes = {f.code for f in safety.check("aviandr", {**self.full, "stopped_drugs": [{"name": "неведомин", "days_ago": 1}]})}
+        self.assertIn("unknown_drug", codes)
+
+    def test_post_covid_course(self):
+        base = dict(icd10=["F43.9"], post_covid=True)
+        self.assertEqual(self.v(**base, weeks_on_drug=3), "green")
+        self.assertEqual(self.v(**base, weeks_on_drug=5), "yellow")
+        codes = {f.code for f in safety.check("aviandr", {**self.full, **base, "weeks_on_drug": 7})}
+        self.assertIn("course_exceeded", codes)
