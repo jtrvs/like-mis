@@ -4,3 +4,9 @@ backups/
 __pycache__/
 *.pyc
 staticfiles/
+Dockerfile
+Dockerfile.*
+docker-compose*.yml
+e2e/
+docs/
+*.md
