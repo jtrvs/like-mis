@@ -37,7 +37,16 @@ def cfg(key):
 
 @lru_cache
 def load_rules():
-    data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
+    active_version = RuleVersion.objects.filter(file_type='alerts', is_active=True).first()
+    if active_version:
+        try:
+            data = yaml.safe_load(active_version.content)["rules"]
+        except Exception as e:
+            log.error("Ошибка чтения правил из базы, падаем в файл: %s", e)
+            data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
+    else:
+        data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
+
     for r in data:
         errs = rules.validate(r["when"])
         if errs:
