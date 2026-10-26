@@ -15,6 +15,16 @@ class RuleVersion(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата загрузки")
     comment = models.CharField(max_length=255, blank=True, verbose_name="Комментарий")
 
+    def save(self, *args, **kwargs):
+        # Если эту версию делают активной, деактивируем все остальные версии того же типа
+        if self.is_active:
+            RuleVersion.objects.filter(
+                file_type=self.file_type, 
+                is_active=True
+            ).exclude(pk=self.pk).update(is_active=False)
+        
+        super().save(*args, **kwargs)
+
     class Meta:
         verbose_name = "Версия правил"
         verbose_name_plural = "Версии правил"

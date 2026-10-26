@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.contrib.auth.models import Group, User
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from django.core.cache import cache
 
 from alerts import facts, service
 from alerts.keywords import scan
@@ -18,7 +19,7 @@ class AlertFlow(TestCase):
         self.other = User.objects.create_user("other", password="x")
         for u in (self.doc, self.backup, self.other):
             u.groups.add(g)
-        service.load_rules.cache_clear()
+        cache.delete('alert_rules_cache')
 
     def ev(self, trigger, f=None, text="", pid=1):
         return service.report_event(patient_id=pid, patient_label=f"П-{pid}", doctor=self.doc, backup_doctor=self.backup,
