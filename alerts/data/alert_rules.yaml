@@ -1,72 +1,223 @@
-# Правила критических состояний. Добавление/изменение — без правки кода.
-# По кастдеву: алертов должно быть мало и только по реально важному.
-# severity: critical — немедленно, все каналы + повтор + эскалация;
-#           high     — немедленно в кабинет и мессенджер;
-#           medium   — в карточку и ежедневную сводку, без push.
-# patient_actions: что система показывает пациенту сразу (без участия врача).
-# events: на какое новое событие правило проверяется (scale, checkin, message, intake, schedule).
+# Правила сигналов — по «Таблице правил» клинического психолога команды (раздел 1 — алерты,
+# 2.9 — побочные эффекты, 4 — приверженность). Добавление/изменение — без правки кода.
+#
+# severity (категория):
+#   critical — КРАСНЫЙ «ЭКСТРЕННО»: сразу в кабинет + вторым каналом; нет отметки 15 мин — повтор каждые 5 мин,
+#              через 30 мин — резервному (дежурному) врачу. Никогда не откладывается и не подавляется.
+#   high     — ОРАНЖЕВЫЙ «СРОЧНО»: сразу в кабинет, ответ в течение суток.
+#   medium   — ЖЁЛТЫЙ «ВНИМАНИЕ»: в карточку и ежедневную сводку.
+#   safety   — ФИОЛЕТОВЫЙ «БЕЗОПАСНОСТЬ»: безопасность терапии, в карточку.
+# Антиспам: некрасный сигнал по тому же правилу не повторяется 72 ч после отметки врача, если не стало хуже
+# (worse_if_greater — какие факты должны вырасти, чтобы «стало хуже»).
+# never_suppress — исключение команды: новые мысли о смерти, передозировка, «Мне плохо» поднимают сигнал всегда
+# (каждое такое сообщение пациента — новое событие, пропустить его опаснее, чем показать лишний раз).
+# title — текст врачу; в фигурных скобках подставляются факты.
+# events: на какое новое событие правило проверяется
+#   (scale, cssrs, checkin, message, intake, schedule, report, sos).
 rules:
-  - id: suicide_risk_scale
+  # ---------- 1. Критические состояния ----------
+  - id: cssrs_high                       # 1.1
+    events: [cssrs]
+    severity: critical
+    title: "C-SSRS: {cssrs_label}. Экран помощи показан пациенту"
+    source: Колумбийская шкала (C-SSRS); КР «Депрессивный эпизод» 2024
+    when: {fact: cssrs_risk, op: eq, value: high}
+    patient_actions: [show_hotlines, offer_trusted_contact, suggest_emergency]
+    doctor_actions: [propose_emergency_referral]
+
+  - id: suicide_risk_scale               # 1.2
     events: [scale]
-    source: phq9_orig
-    severity: critical
-    title: Суицидальные мысли по PHQ-9 (пункт 9)
+    severity: high
+    never_suppress: true
+    title: "PHQ-9, вопрос 9 = {phq9_item9}. Пациенту открыта Колумбийская шкала"
+    source: PHQ-9; C-SSRS
     when: {fact: phq9_item9, op: gte, value: 1}
-    patient_actions: [show_hotlines, offer_trusted_contact, suggest_emergency]
+    patient_actions: [open_cssrs, show_hotlines]
     doctor_actions: [propose_mandatory_referral]
+    worse_if_greater: [phq9_item9]
 
-  - id: suicide_risk_text
+  - id: suicide_risk_text                # 1.2 (то же по словам пациента)
     events: [checkin, message]
-    severity: critical
-    title: Высказывания о суициде/самоповреждении в сообщении или дневнике
+    severity: high
+    never_suppress: true
+    title: Высказывания о смерти или самоповреждении в записи пациента. Пациенту открыта Колумбийская шкала
+    source: C-SSRS
     when: {fact: suicide_keywords, op: is_true}
-    patient_actions: [show_hotlines, offer_trusted_contact, suggest_emergency]
+    patient_actions: [open_cssrs, show_hotlines]
     doctor_actions: [propose_mandatory_referral]
 
-  - id: mania_signs
+  - id: cssrs_moderate                   # 1.3
+    events: [cssrs]
+    severity: high
+    never_suppress: true
+    title: "C-SSRS: {cssrs_label}"
+    source: Колумбийская шкала (C-SSRS)
+    when: {fact: cssrs_risk, op: eq, value: moderate}
+    patient_actions: [show_hotlines]
+    doctor_actions: [propose_mandatory_referral]
+
+  - id: cssrs_low
+    events: [cssrs]
+    severity: medium
+    never_suppress: true
+    title: "C-SSRS: {cssrs_label}"
+    source: Колумбийская шкала (C-SSRS)
+    when: {fact: cssrs_risk, op: eq, value: low}
+    patient_actions: [show_hotlines]
+
+  - id: overdose                         # 1.4
+    events: [report]
+    severity: critical
+    title: "Пациент сообщил о приёме лишних таблеток: {extra_tablets}. Антидота нет, симптоматическая терапия"
+    source: Инструкция Авиандра, «Передозировка»
+    when: {fact: overdose_now, op: is_true}
+    patient_actions: [call_ambulance_take_package]
+    doctor_actions: [propose_emergency_referral]
+
+  - id: pregnancy_on_aviandr             # 1.5
+    events: [report]
+    severity: critical
+    title: Пациентка на Авиандре сообщила о беременности или кормлении грудью — противопоказание. Лечение система не отменяет
+    source: Инструкция Авиандра, «Противопоказания»
+    when: {all: [{fact: on_aviandr, op: is_true}, {fact: reported_pregnancy, op: is_true}]}
+    patient_actions: [contact_doctor_pregnancy]
+
+  - id: serotonin_syndrome               # 1.6
+    events: [checkin]
+    severity: critical
+    title: "Симптомы, похожие на серотониновый синдром, на фоне Авиандра + {serotonergic_drugs}"
+    source: Инструкция Авиандра, «Взаимодействие»
+    when: {all: [{fact: on_aviandr, op: is_true}, {fact: on_serotonergic, op: is_true}, {fact: serotonin_signs, op: gte, value: 2}]}
+    patient_actions: [serotonin_call_103]
+
+  - id: mania_signs                      # 1.7
     events: [checkin]
     severity: high
-    title: Возможные признаки мании (сон < 4 ч две ночи подряд при приподнятом настроении)
+    title: Возможные признаки мании (сон меньше 4 ч две ночи подряд при приподнятом настроении)
+    source: КР «Депрессивный эпизод» 2024
     when: {all: [{fact: short_sleep_nights, op: gte, value: 2}, {fact: mood_last, op: gte, value: 9}]}
     doctor_actions: [propose_mandatory_referral]
 
-  - id: alcohol_on_aviandr
-    events: [checkin]
-    source: aviandr_instr
+  - id: severe_worsening                 # 1.8
+    events: [scale]
     severity: high
-    title: Алкоголь на фоне приёма Авиандра (инструкция — алкоголь запрещён)
-    when: {all: [{fact: on_aviandr, op: is_true}, {fact: alcohol_units_last, op: gte, value: 1}]}
+    title: "Ухудшение по шкалам: PHQ-9 {phq9_total}, GAD-7 {gad7_total}. Предложите внеплановый визит"
+    source: Пороги PHQ-9 и GAD-7; рост на 5 баллов — выбор команды
+    when: {any: [{fact: phq9_total, op: gte, value: 20}, {fact: gad7_total, op: gte, value: 15},
+                 {fact: phq9_delta, op: gte, value: 5}, {fact: gad7_delta, op: gte, value: 5}]}
+    worse_if_greater: [phq9_total, gad7_total]
+
+  - id: not_eating                       # 1.9
+    events: [checkin]
+    severity: high
+    title: "Почти не ест (0–1 приём пищи) {days_not_eating} дня подряд"
+    source: Кастдев; PHQ-9, вопрос 5; снижение аппетита — побочный эффект Авиандра
+    when: {fact: days_not_eating, op: gte, value: 2}
+    patient_actions: [ask_wellbeing]
+
+  - id: home_bound_worse                 # 1.10 (шкалы ухудшились)
+    events: [checkin]
+    severity: high
+    title: "Не выходит из дома {days_not_left_home} дней, шкалы ухудшились"
+    source: Кастдев; КР «Паническое расстройство» (избегание); КР «Депрессивный эпизод»
+    when: {all: [{fact: days_not_left_home, op: gte, value: 5}, {fact: scales_worse, op: is_true}]}
+
+  - id: home_bound                       # 1.10
+    events: [checkin]
+    severity: medium
+    title: "Не выходит из дома {days_not_left_home} дней"
+    source: Кастдев; КР «Паническое расстройство» (избегание); КР «Депрессивный эпизод»
+    when: {all: [{fact: days_not_left_home, op: gte, value: 5}, {fact: scales_worse, op: is_false}]}
+
+  - id: alcohol_on_aviandr               # 1.11
+    events: [checkin, scale]
+    severity: safety
+    title: Отметки об алкоголе или AUDIT-C выше порога на фоне Авиандра
+    source: "Инструкция: алкоголь усиливает действие, зависимость — «с осторожностью»"
+    when: {all: [{fact: on_aviandr, op: is_true}, {any: [{fact: alcohol_units_last, op: gt, value: 0}, {fact: auditc_risk, op: is_true}]}]}
     patient_actions: [remind_no_alcohol]
 
-  - id: self_neglect
+  - id: side_effect                      # 2.9
+    events: [checkin]
+    severity: medium
+    title: "Побочные эффекты «сильно» 2 раза подряд или мешают обычной жизни: {side_effects_last}"
+    source: Инструкция Авиандра, «Побочные действия»
+    when: {any: [{fact: side_effect_strong_streak, op: gte, value: 2}, {fact: side_effect_disrupts, op: is_true}]}
+    patient_actions: [no_driving_if_dizzy]
+
+  - id: worse_pressed
+    events: [checkin]
+    severity: medium
+    title: Пациент отметил «Мне сегодня хуже»
+    source: Опрос пациентов команды (n=71) — на тяжёлый день чаще всего хватает сил на одну кнопку
+    when: {all: [{fact: last_kind, op: eq, value: worse}, {fact: worse_marks_3d, op: lt, value: 2}]}
+    patient_actions: [show_hotlines]
+
+  - id: worse_repeated
     events: [checkin]
     severity: high
-    title: Не выходит из дома и не ест 3 дня подряд
-    when: {all: [{fact: days_not_left_home, op: gte, value: 3}, {fact: days_not_eating, op: gte, value: 3}]}
+    title: "«Мне сегодня хуже» — {worse_marks_3d} раза за 3 дня"
+    source: Выбор команды
+    when: {all: [{fact: last_kind, op: eq, value: worse}, {fact: worse_marks_3d, op: gte, value: 2}]}
+    patient_actions: [show_hotlines]
 
-  - id: severe_worsening
-    events: [scale]
-    source: phq9_orig
+  - id: substances_on_aviandr
+    events: [checkin]
+    severity: safety
+    title: "Принимал(а) без назначения врача: {other_substances_text}"
+    source: "Инструкция Авиандра: седативные и серотонинергические — взаимодействия; КР ГТР 2024"
+    when: {all: [{fact: on_aviandr, op: is_true}, {fact: other_substances_last, op: is_true}]}
+
+  - id: sos_pressed
+    events: [sos]
     severity: high
-    title: Резкое ухудшение — рост PHQ-9 на 5+ баллов к прошлому замеру
-    when: {fact: phq9_delta, op: gte, value: 5}
+    never_suppress: true
+    title: Пациент открыл экран помощи («Мне плохо»)
+    source: Тексты для интерфейса — кнопка «Мне плохо»
+    when: {fact: sos, op: is_true}
 
-  - id: nonadherence
-    events: [intake]
+  # ---------- 4. Приверженность ----------
+  - id: diary_abandoned                  # 4.2
+    events: [schedule, intake, checkin]
     severity: medium
-    title: Пропуск приёма препарата 3 раза подряд
-    when: {fact: missed_doses_streak, op: gte, value: 3}
+    title: "Дней без отметок: {unmarked_days}, приём не подтверждён"
+    source: Выбор команды
+    when: {fact: unmarked_days, op: gte, value: 5}
+
+  - id: nonadherence                     # 4.2
+    events: [intake, schedule]
+    severity: medium
+    title: "Пропущенных приёмов за неделю: {missed_doses_7d}"
+    source: Выбор команды
+    when: {fact: missed_doses_7d, op: gte, value: 3}
     patient_actions: [remind_medication]
 
-  - id: side_effect
-    events: [checkin]
-    source: aviandr_instr
+  - id: low_adherence                    # 4.3
+    events: [intake, schedule]
     severity: medium
-    title: Нежелательное явление из списка мониторинга препарата
-    when: {fact: monitored_side_effects, op: is_true}
+    title: "Низкая приверженность: принято {adherence_30d_pct}% таблеток за месяц. Обсудите причины с пациентом"
+    source: Порог 80% общепринят в исследованиях приверженности
+    when: {all: [{fact: adherence_30d_pct, op: lt, value: 80}, {fact: therapy_days, op: gte, value: 14}]}
 
-  - id: diary_abandoned
-    events: [schedule, checkin, scale, message]
+  - id: stopped_taking                   # 4.4
+    events: [report]
     severity: medium
-    title: Пациент не отмечает приём препарата 3 дня (6 и более доз без отметки)
-    when: {fact: unmarked_doses_streak, op: gte, value: 6}
+    title: "Пациент прекратил приём. Причина: {stop_reason}"
+    source: Инструкция Авиандра, «Прекращение лечения»
+    when: {fact: reported_kind, op: eq, value: stopped}
+
+  - id: took_more                        # 4.5
+    events: [report]
+    severity: high
+    never_suppress: true
+    title: "Принял больше назначенного: {extra_tablets} табл. сверх схемы"
+    source: Инструкция Авиандра
+    when: {all: [{fact: reported_kind, op: eq, value: extra_dose}, {fact: overdose_now, op: is_false}]}
+    patient_actions: [dont_exceed_dose]
+
+  - id: reduced_dose                     # 4.6
+    events: [report]
+    severity: medium
+    title: Пациент сам уменьшил дозу
+    source: Выбор команды
+    when: {fact: reported_kind, op: eq, value: reduced}

@@ -1,0 +1,12 @@
+code: gad2
+title: GAD-2 (короткая еженедельная проверка — тревога)
+derived_from: gad7      # первые 2 вопроса GAD-7
+items: 2
+min_item: 0
+max_item: 3
+severity:
+  - {from: 0, to: 2, code: below, label: Ниже порога}
+  - {from: 3, to: 6, code: above, label: Выше порога — заполнить GAD-7}
+source:
+  original: Kroenke K. et al. Anxiety disorders in primary care. Ann Intern Med. 2007;146(5):317-325.
+  license: Pfizer; свободное использование

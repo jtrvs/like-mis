@@ -1,0 +1,19 @@
+code: cgi_s
+title: CGI-S (общее клиническое впечатление — тяжесть)
+filled_by: doctor
+items: 1
+min_item: 1
+max_item: 7
+item_labels: ["Насколько выражена тяжесть состояния пациента сейчас?"]
+answer_labels: [норма, пограничное, лёгкое, умеренное, выраженное, тяжёлое, крайне тяжёлое]
+severity:
+  - {from: 1, to: 1, code: s1, label: Норма}
+  - {from: 2, to: 2, code: s2, label: Пограничное}
+  - {from: 3, to: 3, code: s3, label: Лёгкое}
+  - {from: 4, to: 4, code: s4, label: Умеренное}
+  - {from: 5, to: 5, code: s5, label: Выраженное}
+  - {from: 6, to: 6, code: s6, label: Тяжёлое}
+  - {from: 7, to: 7, code: s7, label: Крайне тяжёлое}
+source:
+  original: Guy W. ECDEU Assessment Manual for Psychopharmacology. 1976.
+  license: свободная

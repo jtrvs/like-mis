@@ -29,7 +29,9 @@ class Meter:
 
     def click(self, sel):
         self.actions += 1
-        self.p.click(sel)
+        loc = self.p.locator(sel).first
+        loc.evaluate("e => e.scrollIntoView({block: 'center'})")  # нижняя панель вкладок не перекрывает элемент
+        loc.click(force=True)
 
     def fill(self, sel, text):
         self.actions += 1
@@ -38,7 +40,8 @@ class Meter:
 
     def check(self, sel):
         self.actions += 1
-        self.p.check(sel)
+        loc = self.p.locator(sel).first
+        loc.evaluate("e => { e.scrollIntoView({block: 'center'}); e.checked = true; e.dispatchEvent(new Event('change', {bubbles: true})); }")
 
     def result(self, **extra):
         klm = self.actions * (PB + M) + self.keys * K
@@ -65,17 +68,17 @@ def run(base, video_dir=None, slow=0):
             mob["record_video_size"] = {"width": 390, "height": 844}
             desk["record_video_size"] = {"width": 1440, "height": 900}
 
-        # 1. Пациент: ежедневная отметка состояния
+        # 1. Пациент: ежедневная отметка состояния (обе шкалы: 10 — хорошо)
         ctx = br.new_context(**mob)
         pg = ctx.new_page()
         login(pg, base, "anna")
-        m = Meter(pg, "Пациент: ежедневная отметка состояния")
+        m = Meter(pg, "Пациент: ежедневная отметка самочувствия")
         m.click("a[href='/me/checkin/']")
         m.click("label[for=m7]")
-        m.click("label[for=a3]")
+        m.click("label[for=c7]")
         m.fill("#sleep", "7")
-        m.click("input[name=left_home][value='1'] >> xpath=..")
-        m.click("input[name=ate_normally][value='1'] >> xpath=..")
+        m.check(f"input[name=left_home][value='1']")
+        m.check(f"input[name=ate_normally][value='1']")
         m.click("text=Сохранить запись")
         pg.wait_for_selector(".flash")
         results.append(m.result(ok=pg.is_visible("text=Запись сохранена")))
@@ -90,45 +93,56 @@ def run(base, video_dir=None, slow=0):
             pg.wait_for_selector(".state-yes")
         results.append(m.result(ok=pg.locator(".state-yes").count() > 0))
 
-        # 3. Пациент: опросник GAD-7
+        # 3. Пациент: тяжёлый день — одна кнопка
+        m = Meter(pg, "Пациент: «Мне сегодня хуже» — одна кнопка")
+        pg.goto(base + "/me/")
+        m.click(".worse-button")
+        pg.wait_for_selector(".one-question")
+        results.append(m.result(ok=True))
+
+        # 4. Пациент: опросник GAD-7
         m = Meter(pg, "Пациент: опросник GAD-7 (7 вопросов)")
         pg.goto(base + "/me/scale/gad7/")
         for i in range(7):
-            m.click(f"input[name=q{i}][value='1'] >> xpath=..")
+            m.check(f"input[name=q{i}][value='1']")
         m.click("text=Отправить ответы")
         pg.wait_for_load_state("networkidle")
         results.append(m.result(ok="/me/progress/" in pg.url))
         ctx.close()
 
-        # 4. Кризис: пациент пишет о нежелании жить -> экран помощи -> сигнал у врача
+        # 5. Кризис: слова пациента -> Колумбийская шкала -> экран помощи -> красный сигнал у врача
         dctx = br.new_context(**desk)
         dpg = dctx.new_page()
         login(dpg, base, "petrova")
         pctx = br.new_context(**mob)
         ppg = pctx.new_page()
         login(ppg, base, "anna")
-        m = Meter(ppg, "Кризис: сообщение пациента -> экран помощи и сигнал врачу")
+        m = Meter(ppg, "Кризис: сообщение -> C-SSRS -> экран помощи и красный сигнал врачу")
         ppg.goto(base + "/me/chat/")
         m.fill("#t", "Мне очень плохо, не хочу жить")
         t_send = time.perf_counter()
         m.click("text=Отправить")
+        ppg.wait_for_selector("#cssrs-form")
+        for i, v in ((0, "1"), (1, "1"), (2, "1"), (3, "1"), (4, "0"), (5, "0")):
+            m.check(f"input[name=q{i}][value='{v}']")
+        m.click("text=Отправить ответы")
         ppg.wait_for_selector(".crisis")
         dpg.goto(base + "/doctor/")
-        dpg.wait_for_selector("text=Высказывания о суициде")
+        dpg.wait_for_selector("text=C-SSRS: есть намерение")
         alert_ms = round((time.perf_counter() - t_send) * 1000)
         results.append(m.result(ok=True, crisis_screen=True, alert_visible_to_doctor_ms=alert_ms))
         pctx.close()
 
-        # 5. Психиатр: открыть сигнал, отметить реакцию
-        m = Meter(dpg, "Психиатр: отреагировать на срочный сигнал")
+        # 6. Психиатр: открыть сигнал, подтвердить получение
+        m = Meter(dpg, "Психиатр: подтвердить экстренный сигнал")
         m.click(".alert-summary.critical .text-action")
-        m.fill(".sig.critical input[name=resolution]", "Позвонила, договорились о приёме завтра")
-        m.click(".sig.critical button")
+        m.fill("#alert-group input[name=resolution]", "Позвонила, договорились о приёме завтра")
+        m.click("#alert-group button")
         dpg.wait_for_selector(".flash")
-        results.append(m.result(ok=dpg.is_visible("text=Сигнал отмечен")))
+        results.append(m.result(ok=dpg.is_visible("text=Отмечено сигналов")))
 
-        # 6. Психиатр: новый пациент с ГТР -> назначение Авиандра (зелёный)
-        m = Meter(dpg, "Психиатр: новый пациент с ГТР и назначение Авиандра")
+        # 7. Сценарий А: новый пациент с ГТР -> назначение Авиандра (зелёный)
+        m = Meter(dpg, "Сценарий А: новый пациент с ГТР и назначение Авиандра")
         m.click("a[href='/doctor/patient/new/']")
         m.fill("#id_last_name", "Тестова")
         m.fill("#id_first_name", "Ольга")
@@ -143,17 +157,19 @@ def run(base, video_dir=None, slow=0):
         dpg.wait_for_selector("text=Авиандр назначен")
         results.append(m.result(ok=True, verdict="green"))
 
-        # 7. Психиатр: противопоказание (Кузнецова) — система не даёт назначить без решения врача
-        m = Meter(dpg, "Психиатр: попытка назначить при противопоказаниях")
+        # 8. Сценарий Г: паническое расстройство — назначение только «вне инструкции» с обоснованием
+        m = Meter(dpg, "Сценарий Г: Авиандр вне инструкции — только с обоснованием")
         dpg.goto(base + "/doctor/")
-        m.click("text=Кузнецова")
-        dpg.wait_for_selector("text=Есть противопоказания по инструкции")
+        m.click("text=Соколова")
+        dpg.wait_for_selector("text=не входят в показания")
         m.click("text=Назначить Авиандр")
         dpg.wait_for_selector(".flash.error")
-        blocked = dpg.is_visible("text=Есть противопоказания по инструкции. Назначение возможно только")
-        results.append(m.result(ok=blocked, verdict="red", blocked_without_override=blocked))
+        m.fill("#id_rationale", "Решение врача: паническое расстройство, первая линия не переносится; исследование Сеченовского университета")
+        m.click("text=Назначить Авиандр")
+        dpg.wait_for_selector("text=Авиандр назначен")
+        results.append(m.result(ok=dpg.is_visible("text=вне инструкции")))
 
-        # 8. Психиатр: загрузка выписки и перенос в карточку
+        # 9. Психиатр: загрузка выписки и перенос в карточку
         m = Meter(dpg, "Психиатр: загрузка выписки из другой клиники")
         dpg.goto(base + "/doctor/")
         m.click("text=Павлов")
@@ -170,14 +186,24 @@ def run(base, video_dir=None, slow=0):
         results.append(m.result(ok=True))
         dctx.close()
 
-        # 9. Терапевт: пациент с суицидальным риском -> направление к психиатру
+        # 10. Сценарий Б: противопоказание и взаимодействия — назначить без решения врача нельзя
         tctx = br.new_context(**desk)
         tpg = tctx.new_page()
         login(tpg, base, "sidorov")
-        m = Meter(tpg, "Терапевт: оформить обязательное направление к психиатру")
+        m = Meter(tpg, "Сценарий Б: попытка назначить при противопоказаниях")
+        m.click("text=Кузнецова")
+        tpg.wait_for_selector("text=Есть противопоказания по инструкции")
+        m.click("text=Назначить Авиандр")
+        tpg.wait_for_selector(".flash.error")
+        blocked = tpg.is_visible("text=Есть противопоказания по инструкции. Назначение возможно только")
+        results.append(m.result(ok=blocked, verdict="red", blocked_without_override=blocked))
+
+        # 11. Сценарий В: терапевт — экстренное направление к психиатру
+        m = Meter(tpg, "Сценарий В: терапевт оформляет экстренное направление")
+        tpg.goto(base + "/doctor/")
         m.click("text=Морозов")
-        tpg.wait_for_selector("text=Обязательно")
-        m.click(".sig.mandatory button[value=confirm]")
+        tpg.wait_for_selector("text=ОБЯЗАТЕЛЬНО · ЭКСТРЕННО")
+        m.click(".sig.emergency button[value=confirm]")
         tpg.wait_for_selector("text=Направление к психиатру подтверждено")
         results.append(m.result(ok=True))
         tctx.close()

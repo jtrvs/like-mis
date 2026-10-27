@@ -15,12 +15,12 @@ from dataclasses import dataclass, asdict
 
 from . import loader
 
-LEVEL_ORDER = {"contraindication": 0, "caution": 1, "off_label": 1, "info": 2}
+LEVEL_ORDER = {"contraindication": 0, "caution": 1, "off_label": 1, "ok": 2, "info": 3}
 
 
 @dataclass
 class Finding:
-    level: str  # contraindication | caution | off_label | info
+    level: str  # contraindication | caution | off_label | ok (значимого взаимодействия нет) | info
     code: str
     text: str
     source: str
@@ -74,8 +74,12 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
 
     # взаимодействия: текущие препараты + недавно отменённые (для отмывочного периода).
     # Все механизмы для одного препарата сводятся в одну находку с наивысшим уровнем.
-    current = [(n, None) for n in ctx.get("current_drugs") or []]
-    recent = [(s["name"], s["days_ago"]) for s in ctx.get("stopped_drugs") or []]
+    no_interaction = {n.lower() for n in d.get("no_significant_interaction", [])}
+    current = [(n, None) for n in ctx.get("current_drugs") or [] if normalize(n) not in no_interaction]
+    recent = [(s["name"], s["days_ago"]) for s in ctx.get("stopped_drugs") or [] if normalize(s["name"]) not in no_interaction]
+    for n in ctx.get("current_drugs") or []:
+        if normalize(n) in no_interaction:
+            out.append(Finding("ok", "no_interaction", f"{n}: значимого взаимодействия не выявлено (по данным исследований).", src))
     per_drug: dict[str, list] = {}
     for rule in d.get("interactions", []):
         washout = next(
@@ -106,12 +110,15 @@ def check(drug_code: str, ctx: dict) -> list[Finding]:
         covid_note = ""
         if dx & (all_codes - allowed):
             covid_note = " F41.9/F43.9 — показание только для тревоги после перенесённого COVID-19; отметьте это в карточке, если так."
+        refs = d.get("off_label_refs", {})
+        ref = next((refs[k] for code in sorted(dx) for k in sorted(refs, key=len, reverse=True) if code.startswith(k)), "")
         out.append(
             Finding(
                 "off_label",
                 "no_indication",
                 f"Диагнозы {', '.join(sorted(dx))} не входят в показания инструкции "
-                f"({', '.join(sorted(allowed or all_codes))}).{covid_note} Применение вне инструкции — только решение врача.",
+                f"({', '.join(sorted(allowed or all_codes))}).{covid_note} Применение вне инструкции — только решение врача, "
+                f"укажите обоснование.{(' ' + ref) if ref else ''}",
                 src,
             )
         )

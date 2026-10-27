@@ -8,8 +8,9 @@
   .sig { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; padding: 12px 14px; border-radius: 8px; margin: 10px 0; }
   .tag { grid-row: span 3; font-weight: 700; font-size: 13px; padding: 3px 10px; border-radius: 3px; align-self: start; }
   .critical { background: #B42318; color: #fff; } .critical .tag { background: #fff; color: #B42318; }
-  .high { background: #FFF6E5; border: 2px dashed #D99A1E; } .high .tag { color: #9A6200; border: 1.5px solid #D99A1E; }
-  .medium { background: #EEF3F4; } .medium .tag { border: 1px solid #D9E0E3; background: #fff; }
+  .high { background: #FFF1E6; border: 2px solid #C2410C; } .high .tag { color: #9A3412; border: 1.5px solid #C2410C; }
+  .medium { background: #FFF9DB; border: 2px dashed #B7950B; } .medium .tag { border: 1px solid #B7950B; background: #fff; color: #6B5600; }
+  .safety { background: #F3ECFA; border: 2px solid #6D28D9; } .safety .tag { border: 1px solid #6D28D9; background: #fff; color: #5B21B6; }
   .done { opacity: .55; }
   .title { font-weight: 600; } .meta { font-size: 13px; opacity: .85; }
   form { display: flex; gap: 8px; margin-top: 6px; } input { flex: 1; padding: 6px 8px; border: 1px solid #D9E0E3; border-radius: 4px; }
@@ -19,7 +20,7 @@
 </style></head>
 <body>
 <h1>Сигналы</h1>
-<p class="muted">Срочные приходят и в мессенджер. Без отметки «просмотрено» через 15 минут — повтор, затем передача резервному врачу.</p>
+<p class="muted">«Экстренно» приходит и вторым каналом: без подтверждения 15 минут — повтор каждые 5 минут, через 30 минут — резервному врачу.</p>
 {% for a in alerts %}
 <div class="sig {{ a.severity }}{% if a.status not in a.OPEN %} done{% endif %}" id="alert-{{ a.id }}">
   <span class="tag">{{ a.get_severity_display }}</span>

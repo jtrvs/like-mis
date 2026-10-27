@@ -14,6 +14,7 @@
         <div>
             <fieldset class="module aligned">
                 <h2>Загрузить новые правила (YAML)</h2>
+                <p style="padding:8px 12px;margin:0">Перед активацией система проверяет разметку, имена фактов и операторы, категории сигналов, источники рекомендаций и наличие обязательных правил суицидального риска. Версия с ошибками не сохраняется.</p>
                 <div class="form-row">
                     <label for="file_type">Тип правил:</label>
                     <select name="file_type" id="file_type" required onchange="window.location.href = '?file_type=' + this.value;">
@@ -34,7 +35,8 @@
                 </div>
             </fieldset>
             <div class="submit-row">
-                <input type="submit" value="Загрузить и активировать" class="default">
+                <input type="submit" value="Проверить и активировать" class="default">
+                <input type="submit" name="reset" value="Вернуть версию из репозитория" formnovalidate>
                 <a href="{% url 'admin:index' %}" class="closelink">Отмена</a>
             </div>
         </div>

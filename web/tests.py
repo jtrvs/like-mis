@@ -6,7 +6,7 @@ from alerts.models import Alert
 
 def pid_of(last):
     return PatientProfile.objects.get(last_name=last).id
-from core.models import AuditLog, DoctorDecision, PatientProfile, Prescription, Referral, ScaleResponse
+from core.models import AuditLog, DoctorDecision, Message, PatientProfile, Prescription, Referral, ScaleResponse
 
 
 class WebFlows(TestCase):
@@ -56,12 +56,14 @@ class WebFlows(TestCase):
         for url in ["/doctor/", "/doctor/alerts/", "/doctor/patient/new/"] + [f"/doctor/patient/{p.public_id}/" for p in PatientProfile.objects.filter(care_links__doctor__user__username="petrova")]:
             self.assertEqual(self.client.get(url).status_code, 200, url)
         self.login("anna")
-        for url in ["/me/", "/me/checkin/", "/me/scale/phq9/", "/me/scale/gad7/", "/me/meds/", "/me/progress/", "/me/chat/", "/me/help/"]:
+        for url in ["/me/", "/me/checkin/", "/me/scale/phq9/", "/me/scale/gad7/", "/me/scale/auditc/", "/me/short/", "/me/cssrs/",
+                    "/me/meds/", "/me/meds/report/", "/me/progress/", "/me/chat/", "/me/help/"]:
             self.assertEqual(self.client.get(url).status_code, 200, url)
+        self.assertEqual(self.client.get("/me/scale/hama/").status_code, 302)  # шкалы врача пациенту не открываются
 
     # --- клинические действия только через врача ---
     def test_red_requires_override_and_rationale(self):
-        self.login("petrova")
+        self.login("sidorov")  # сценарий Б: пациентка терапевта
         url = f"/doctor/patient/{self.pid('Кузнецова')}/aviandr/"
         self.client.post(url, {"start_date": "2026-10-21"})
         self.assertFalse(Prescription.objects.filter(patient_id=pid_of("Кузнецова"), drug_code="aviandr").exists())
@@ -91,7 +93,7 @@ class WebFlows(TestCase):
         self.login("sidorov")
         p = PatientProfile.objects.get(last_name="Морозов")
         ref = Referral.objects.get(patient=p, status="proposed")
-        self.assertEqual(ref.urgency, "mandatory")
+        self.assertEqual(ref.urgency, "emergency")  # сценарий В: C-SSRS — намерение без плана
         self.client.post(f"/doctor/patient/{p.public_id}/referral/{ref.id}/", {"decision": "confirm"})
         ref.refresh_from_db()
         self.assertEqual(ref.status, "confirmed")
@@ -99,11 +101,19 @@ class WebFlows(TestCase):
     # --- пациент: данные сразу у врача, кризисный экран ---
     def test_checkin_reaches_doctor_and_crisis_screen(self):
         self.login("anna")
-        r = self.client.post("/me/checkin/", {"mood": 1, "anxiety": 9, "text": "хочу умереть"})
-        self.assertRedirects(r, "/me/help/?crisis=1", fetch_redirect_response=False)
+        r = self.client.post("/me/checkin/", {"mood": 1, "calm": 9, "text": "хочу умереть"})
+        # таблица правил 1.2: сразу Колумбийская шкала с контактами поддержки, врачу — оранжевый сигнал
+        self.assertRedirects(r, "/me/cssrs/", fetch_redirect_response=False)
         a = Alert.objects.get(patient_id=pid_of("Смирнова"), rule_id="suicide_risk_text")
-        self.assertEqual(a.doctor.username, "petrova")
+        self.assertEqual((a.doctor.username, a.severity), ("petrova", "high"))
         self.assertIsNotNone(a.delivered_at)
+        page = self.client.get("/me/cssrs/")
+        self.assertContains(page, "8 800 100-49-94")
+        # намерение без плана → красный сигнал и экран помощи
+        r = self.client.post("/me/cssrs/", {"q0": "1", "q1": "1", "q2": "1", "q3": "1", "q4": "0", "q5": "0"})
+        self.assertRedirects(r, "/me/help/?crisis=1", fetch_redirect_response=False)
+        self.assertTrue(Alert.objects.filter(patient_id=pid_of("Смирнова"), rule_id="cssrs_high", severity="critical").exists())
+        self.assertContains(self.client.get("/me/help/?crisis=1"), "Ваш врач получил уведомление")
 
     def test_scale_submission(self):
         self.login("anna")
@@ -171,14 +181,14 @@ class ReviewRegressions(TestCase):
         self.client.post(f"/doctor/alerts/{a.id}/ack/", {"resolution": "звонок"})
         self.login("anna")
         r = self.client.post("/me/chat/", {"text": "всё равно наложу на себя руки"})
-        self.assertRedirects(r, "/me/help/?crisis=1", fetch_redirect_response=False)
+        self.assertRedirects(r, "/me/cssrs/", fetch_redirect_response=False)
         self.assertEqual(Alert.objects.filter(patient_id=pid_of("Смирнова"), rule_id="suicide_risk_text").count(), 2)
 
     def test_old_message_does_not_retrigger(self):
         self.login("anna")
         self.client.post("/me/chat/", {"text": "хочу умереть"})
         Alert.objects.filter(patient_id=pid_of("Смирнова")).update(status="acknowledged")
-        r = self.client.post("/me/checkin/", {"mood": 5, "anxiety": 4})
+        r = self.client.post("/me/checkin/", {"mood": 5, "calm": 4})
         self.assertRedirects(r, "/me/", fetch_redirect_response=False)
         self.assertEqual(Alert.objects.filter(patient_id=pid_of("Смирнова"), rule_id="suicide_risk_text").count(), 1)
 
@@ -342,3 +352,282 @@ class ReviewRegressions(TestCase):
         p = PatientProfile.objects.get(last_name='Павлов')
         response = self.client.post(f'/doctor/patient/{p.public_id}/import/', {'text': '   '})
         self.assertContains(response, 'Вставьте текст для разбора.')
+
+
+class AlinaScenarios(TestCase):
+    """Клинические сценарии А–Г и правила клинического психолога команды."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo", "--reset", stdout=open("/dev/null", "w"))
+
+    def login(self, u):
+        self.client.logout()
+        self.assertTrue(self.client.login(username=u, password="Demo-2026!"))
+
+    def p(self, last):
+        return PatientProfile.objects.get(last_name=last)
+
+    def test_a_no_extra_alerts_and_response(self):
+        from web import services as S
+        p = self.p("Смирнова")
+        self.assertFalse(Alert.objects.filter(patient_id=p.id).exists())
+        self.assertEqual(S.aviandr_panel(p)["verdict"], "green")
+        self.assertEqual(S.treatment_response(p)["code"], "response")
+        self.login("petrova")
+        r = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(r, "Ответ на терапию")
+        self.assertContains(r, "HAM-A")
+
+    def test_b_contraindication_and_desirable(self):
+        from web import services as S
+        p = self.p("Кузнецова")
+        self.assertEqual(S.aviandr_panel(p)["verdict"], "red")
+        self.assertFalse(Alert.objects.filter(patient_id=p.id).exists())
+        self.assertEqual(S.routing_panel(p)["urgency"], "desirable")
+        self.login("sidorov")
+        r = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(r, "ЖЕЛАТЕЛЬНО")
+
+    def test_c_therapist_patient_red_and_emergency(self):
+        p = self.p("Морозов")
+        self.assertFalse(p.diagnoses.exists())
+        self.assertTrue(Alert.objects.filter(patient_id=p.id, rule_id="cssrs_high", severity="critical").exists())
+        self.login("sidorov")
+        r = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(r, "ОБЯЗАТЕЛЬНО · ЭКСТРЕННО")
+        self.assertContains(r, "Лечение — после консультации психиатра")
+        self.assertContains(r, "Сработало правил")  # несколько правил — одна карточка с перечнем
+        # одна отметка на карточку, с «ложным срабатыванием»
+        self.client.post(f"/doctor/patient/{p.public_id}/alerts/ack/", {"resolution": "позвонил", "false_positive": ""})
+        self.assertFalse(Alert.objects.filter(patient_id=p.id, status__in=Alert.OPEN).exists())
+
+    def test_d_panic_home_bound_yellow_offlabel(self):
+        from web import services as S
+        p = self.p("Соколова")
+        self.assertEqual(Alert.objects.get(patient_id=p.id).rule_id, "home_bound")
+        self.assertTrue(any(f.level == "off_label" and "ID 456" in f.text for f in S.aviandr_panel(p)["findings"]))
+
+    def test_cssrs_skip_logic(self):
+        self.login("anna")
+        # «нет» на вопрос 2 — вопросы 3–5 не обязательны; только желание умереть → низкий риск
+        r = self.client.post("/me/cssrs/", {"q0": "1", "q1": "0", "q5": "0"})
+        self.assertRedirects(r, "/me/help/?support=1", fetch_redirect_response=False)
+        last = ScaleResponse.objects.filter(patient__last_name="Смирнова", scale_code="cssrs").latest("created_at")
+        self.assertEqual(last.severity, "low")
+        r = self.client.post("/me/cssrs/", {"q0": "1"})
+        self.assertContains(r, "Ответьте, пожалуйста")
+
+    def test_phq9_item9_goes_to_cssrs(self):
+        self.login("anna")
+        data = {f"q{i}": 0 for i in range(9)}
+        data["q8"] = 1
+        r = self.client.post("/me/scale/phq9/", data)
+        self.assertRedirects(r, "/me/cssrs/", fetch_redirect_response=False)
+
+    def test_report_overdose_and_pregnancy(self):
+        self.login("anna")
+        r = self.client.post("/me/meds/report/", {"kind": "extra_dose", "extra_tablets": 4, "feels_bad": "0"})
+        self.assertRedirects(r, "/me/help/?reason=overdose", fetch_redirect_response=False)
+        self.assertContains(self.client.get("/me/help/?reason=overdose"), "Возьмите с собой упаковку")
+        self.client.post("/me/meds/report/", {"kind": "pregnancy"})
+        rules = set(Alert.objects.filter(patient_id=self.p("Смирнова").id).values_list("rule_id", flat=True))
+        self.assertTrue({"overdose", "pregnancy_on_aviandr"} <= rules)
+        r = self.client.post("/me/meds/report/", {"kind": "extra_dose"})
+        self.assertContains(r, "Укажите, сколько таблеток")
+
+    def test_sos_button_alerts_doctor_once(self):
+        self.login("anna")
+        self.client.get("/me/help/?sos=1")
+        self.client.get("/me/help/?sos=1")
+        self.assertEqual(Alert.objects.filter(patient_id=self.p("Смирнова").id, rule_id="sos_pressed").count(), 1)
+        self.client.get("/me/help/")
+        self.assertEqual(Alert.objects.filter(rule_id="sos_pressed").count(), 1)
+
+    def test_serotonin_question_only_with_combination(self):
+        self.login("anna")
+        self.assertNotContains(self.client.get("/me/checkin/"), "сильный пот")
+        p = self.p("Смирнова")
+        Prescription.objects.create(patient=p, drug_code="сертралин", drug_name="сертралин", dose_mg=50, times_per_day=1,
+                                    start_date=p.prescriptions.first().start_date)
+        self.assertContains(self.client.get("/me/checkin/"), "сильный пот")
+        r = self.client.post("/me/checkin/", {"mood": 4, "calm": 7, "serotonin_signs": ["жар", "дрожь"]})
+        self.assertRedirects(r, "/me/help/?reason=serotonin", fetch_redirect_response=False)
+        self.assertTrue(Alert.objects.filter(patient_id=p.id, rule_id="serotonin_syndrome", severity="critical").exists())
+
+    def test_doctor_assessments(self):
+        p = self.p("Соколова")
+        self.login("petrova")
+        url = f"/doctor/patient/{p.public_id}/assess/"
+        self.client.post(url + "hama/", {f"q{i}": 2 for i in range(14)})
+        self.client.post(url + "cgi_s/", {"q0": 4})
+        self.assertEqual(ScaleResponse.objects.get(patient=p, scale_code="hama").total, 28)
+        self.assertEqual(ScaleResponse.objects.get(patient=p, scale_code="cgi_s").filled_by, "doctor")
+        self.client.post(url + "hama/", {"q0": 1})  # не все пункты — не сохраняется
+        self.assertEqual(ScaleResponse.objects.filter(patient=p, scale_code="hama").count(), 1)
+        self.login("sidorov")
+        self.assertEqual(self.client.post(url + "hama/", {f"q{i}": 2 for i in range(14)}).status_code, 404)  # чужой пациент
+
+    def test_patient_pages_have_no_labels(self):
+        """Тексты для интерфейса: в кабинете пациента нет слов-ярлыков."""
+        import re
+        self.login("oleg")
+        for url in ["/me/", "/me/checkin/", "/me/scale/phq9/", "/me/scale/gad7/", "/me/short/", "/me/cssrs/", "/me/meds/",
+                    "/me/meds/report/", "/me/progress/", "/me/chat/", "/me/help/", "/me/help/?crisis=1", "/me/help/?support=1",
+                    "/me/learn/", "/me/learn/aviandr/", "/me/learn/specialist/", "/me/learn/between/", "/me/?one=1"]:
+            html = self.client.get(url).content.decode()
+            text = re.sub(r"<[^>]+>", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html, flags=re.S)).lower()
+            for word in ("диагноз", "расстройств", "суицид", "тяжёлая депрессия", "критическое состояние", "патолог", "отклонени"):
+                self.assertNotIn(word, text, f"{url}: «{word}»")
+
+
+class NightFeatures(TestCase):
+    """Доработки по отзывам пациентов и врачей, опросам и кастдеву."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_demo", "--reset", stdout=open("/dev/null", "w"))
+
+    def login(self, u):
+        self.client.logout()
+        self.assertTrue(self.client.login(username=u, password="Demo-2026!"))
+
+    def test_calm_scale_same_direction(self):
+        from core.models import DailyCheckin
+        self.login("anna")
+        self.client.post("/me/checkin/", {"mood": 8, "calm": 9})
+        c = DailyCheckin.objects.filter(patient__last_name="Смирнова").latest("created_at")
+        self.assertEqual((c.mood, c.anxiety, c.calm), (8, 1, 9))
+        self.assertContains(self.client.get("/me/checkin/"), "10 — спокойно")
+
+    def test_alcohol_in_ml_counts_standard_units_and_warns(self):
+        from core.models import DailyCheckin
+        self.login("anna")
+        r = self.client.post("/me/checkin/", {"mood": 6, "calm": 6, "alcohol_drink": "wine", "alcohol_ml": 150}, follow=True)
+        c = DailyCheckin.objects.filter(patient__last_name="Смирнова").latest("created_at")
+        self.assertEqual((c.alcohol_abv, c.alcohol_units), (12, 1.4))  # 150 мл × 12% × 0,789 / 10 г
+        self.assertContains(r, "позвоните врачу")
+        self.assertTrue(Alert.objects.filter(patient_id=c.patient_id, rule_id="alcohol_on_aviandr", severity="safety").exists())
+        r = self.client.post("/me/checkin/", {"mood": 6, "calm": 6, "alcohol_drink": "beer"})
+        self.assertContains(r, "объём")
+
+    def test_private_note_is_not_shown_to_doctor(self):
+        self.login("anna")
+        r = self.client.post("/me/checkin/", {"mood": 5, "calm": 5, "private_text": "секрет про работу"})
+        self.assertRedirects(r, "/me/", fetch_redirect_response=False)
+        self.login("petrova")
+        p = PatientProfile.objects.get(last_name="Смирнова")
+        self.assertNotContains(self.client.get(f"/doctor/patient/{p.public_id}/"), "секрет про работу")
+        # тревожные слова в личной заметке: пациенту — поддержка, врачу — ничего
+        self.login("anna")
+        before = Alert.objects.count()
+        r = self.client.post("/me/checkin/", {"mood": 2, "calm": 2, "private_text": "хочу умереть"})
+        self.assertRedirects(r, "/me/help/?support=1&private=1", fetch_redirect_response=False)
+        self.assertEqual(Alert.objects.count(), before)
+
+    def test_worse_button_and_one_question(self):
+        self.login("anna")
+        r = self.client.post("/me/worse/")
+        self.assertRedirects(r, "/me/?one=1", fetch_redirect_response=False)
+        pid = pid_of("Смирнова")
+        self.assertTrue(Alert.objects.filter(patient_id=pid, rule_id="worse_pressed", severity="medium").exists())
+        self.client.post("/me/worse/")
+        self.assertTrue(Alert.objects.filter(patient_id=pid, rule_id="worse_repeated", severity="high").exists())
+        self.assertContains(self.client.get("/me/?one=1"), "Один вопрос")
+        self.client.post("/me/one/", {"mood": 3})
+        from core.models import DailyCheckin
+        self.assertEqual(DailyCheckin.objects.filter(patient_id=pid).latest("created_at").kind, "one")
+
+    def test_clinic_service_only_with_reason_and_can_hide(self):
+        from core.models import ServiceRequest
+        self.login("anna")  # ответ на терапию — повода нет
+        self.assertNotContains(self.client.get("/me/"), "Оставить заявку")
+        self.login("maria")  # частичный ответ, GAD-7 13 — уместна КПТ/психолог
+        page = self.client.get("/me/")
+        self.assertContains(page, "Оставить заявку")
+        code = page.context["offer"]["code"]
+        self.client.post(f"/me/service/{code}/")
+        self.assertTrue(ServiceRequest.objects.filter(patient__last_name="Кузнецова", service=code).exists())
+        self.login("sidorov")
+        p = PatientProfile.objects.get(last_name="Кузнецова")
+        self.assertContains(self.client.get(f"/doctor/patient/{p.public_id}/"), "Заявки пациента на услуги клиники")
+
+    def test_referral_text_material_and_feedback_loop(self):
+        self.login("sidorov")
+        p = PatientProfile.objects.get(last_name="Морозов")
+        r = self.client.get(f"/doctor/patient/{p.public_id}/")
+        self.assertContains(r, "Готовый текст направления")
+        self.assertIn("C-SSRS", r.context["referral_text"])
+        self.client.post(f"/doctor/patient/{p.public_id}/material/")
+        self.assertTrue(Message.objects.filter(care_link__patient=p, text__contains="/me/learn/specialist/").exists())
+        ref = Referral.objects.get(patient=p, status="proposed")
+        self.client.post(f"/doctor/patient/{p.public_id}/referral/{ref.id}/", {"decision": "confirm"})
+        self.login("petrova")
+        home = self.client.get("/doctor/")
+        self.assertContains(home, "Входящие направления")
+        self.client.post(f"/doctor/referral/{ref.id}/accept/", {"recommendations": "Госпитализация не нужна, начат сертралин"})
+        self.login("sidorov")
+        self.assertContains(self.client.get(f"/doctor/patient/{p.public_id}/"), "Госпитализация не нужна")
+
+    def test_igor_feedback_and_improving_badge(self):
+        self.login("sidorov")
+        p = PatientProfile.objects.get(last_name="Волков")
+        self.assertContains(self.client.get(f"/doctor/patient/{p.public_id}/"), "Пациент дошёл")
+        self.login("petrova")
+        rows = {r["p"].last_name: r for r in self.client.get("/doctor/").context["rows"]}
+        self.assertTrue(rows["Смирнова"]["improving"])
+        self.assertFalse(rows["Новикова"]["improving"])
+
+    def test_summary_legal_team(self):
+        self.login("petrova")
+        p = PatientProfile.objects.get(last_name="Смирнова")
+        r = self.client.get(f"/doctor/patient/{p.public_id}/")
+        for t in ("Сводка перед приёмом", "Юридические подсказки", "323-ФЗ, ст. 36.2", "Другие врачи пациента"):
+            self.assertContains(r, t)
+        self.client.post(f"/doctor/patient/{p.public_id}/team/", {"name": "Иванова А. А.", "specialty": "Психолог"})
+        self.assertContains(self.client.get(f"/doctor/patient/{p.public_id}/"), "Иванова А. А.")
+
+    def test_show_password_and_new_logo(self):
+        r = self.client.get("/login/")
+        self.assertContains(r, "pw-toggle")
+        self.assertContains(r, "Ассистент врача")
+        self.assertNotContains(r, "С возвращением")
+
+    def test_aviandr_has_no_dependence_warning(self):
+        from web import services as S
+        p = PatientProfile.objects.get(last_name="Смирнова")
+        text = " ".join(f.text for f in S.aviandr_panel(p)["findings"] + S.aviandr_panel(p)["warnings"])
+        self.assertNotIn("зависимость", text.lower().replace("алкогольная или наркотическая зависимость", ""))
+
+
+class RuleAdmin(TestCase):
+    def setUp(self):
+        from django.contrib.auth.models import User
+        self.admin = User.objects.create_superuser("dev", password="x")
+        self.client.login(username="dev", password="x")
+
+    def test_bad_rules_rejected_good_activated_reset(self):
+        from rules.models import RuleVersion
+        from alerts import service
+        good = open("alerts/data/alert_rules.yaml", encoding="utf-8").read()
+        bad = good.replace("fact: phq9_item9, op: gte", "fact: phq9_itm9, op: gte")
+        r = self.client.post("/admin/upload-rules/", {"file_type": "alerts", "content": bad})
+        self.assertContains(r, "неизвестный факт")
+        self.assertFalse(RuleVersion.objects.exists())
+        no_suicide = "rules:\n  - {id: x, events: [scale], severity: medium, title: t, when: {fact: phq9_total, op: gte, value: 5}}\n"
+        r = self.client.post("/admin/upload-rules/", {"file_type": "alerts", "content": no_suicide})
+        self.assertContains(r, "обязательные правила")
+        self.client.post("/admin/upload-rules/", {"file_type": "alerts", "content": good.replace("Пациенту открыта Колумбийская шкала\"", "Открыта C-SSRS\"", 1)})
+        self.assertTrue(RuleVersion.objects.filter(is_active=True).exists())
+        self.assertTrue(any("Открыта C-SSRS" in r["title"] for r in service.load_rules()))
+        self.client.post("/admin/upload-rules/", {"file_type": "alerts", "reset": "1", "content": ""})
+        self.assertFalse(RuleVersion.objects.filter(is_active=True).exists())
+        self.assertFalse(any("Открыта C-SSRS" in r["title"] for r in service.load_rules()))
