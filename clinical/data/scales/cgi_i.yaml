@@ -1,0 +1,17 @@
+code: cgi_i
+title: CGI-I (общее клиническое впечатление — улучшение)
+filled_by: doctor
+items: 1
+min_item: 1
+max_item: 7
+item_labels: ["Как изменилось состояние по сравнению с исходным?"]
+answer_labels: [очень значительное улучшение, значительное улучшение, небольшое улучшение, без изменений, небольшое ухудшение, значительное ухудшение, очень значительное ухудшение]
+# Значимое улучшение = 1 или 2
+severity:
+  - {from: 1, to: 2, code: improved, label: Значимое улучшение}
+  - {from: 3, to: 3, code: slight, label: Небольшое улучшение}
+  - {from: 4, to: 4, code: unchanged, label: Без изменений}
+  - {from: 5, to: 7, code: worse, label: Ухудшение}
+source:
+  original: Guy W. ECDEU Assessment Manual for Psychopharmacology. 1976.
+  license: свободная

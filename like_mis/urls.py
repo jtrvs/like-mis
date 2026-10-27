@@ -16,8 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import include, path
+from rules.admin_views import upload_rules
 
 urlpatterns = [
+    path('admin/upload-rules/', upload_rules, name='upload_rules'),
     path('admin/', admin.site.urls),
     path('', include('alerts.urls')),      # /alerts/, /api/alerts/
     path('', include('extraction.urls')),  # /api/extract

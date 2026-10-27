@@ -41,6 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
   ], 27);
   draw('ch-diary', [
     {label: 'Настроение', points: data.mood, color: '#386D59'},
-    {label: 'Тревога', points: data.anxiety, color: '#705681', dash: [6, 4]},
+    {label: 'Спокойствие', points: data.calm, color: '#705681', dash: [6, 4]},
   ], 10);
 });

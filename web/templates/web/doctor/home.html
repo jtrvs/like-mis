@@ -10,6 +10,12 @@
   <a class="summary-card{% if summary.attention %} summary-attention{% endif %}" href="?status=attention"><span class="soft-icon{% if summary.attention %} rose{% else %} lavender{% endif %}">{% include "web/_icon.html" with name="warning" %}</span><div><b>{{ summary.attention }}</b><span>Требуют внимания</span></div></a>
   <a class="summary-card" href="/doctor/alerts/"><span class="soft-icon mint">{% include "web/_icon.html" with name="bell" %}</span><div><b>{{ open_alerts }}</b><span>Открытых сигналов</span></div></a>
 </div>
+{% if incoming %}<section class="panel incoming-referrals" aria-labelledby="h-incoming"><div class="section-heading"><h2 id="h-incoming">Входящие направления</h2><span class="small muted">от врачей вашей клиники</span></div>
+  {% for ref in incoming %}<div class="sig {{ ref.urgency }}"><span class="tag">➜ {{ ref.get_urgency_display|upper }}</span>
+    <div class="title">{{ ref.patient.last_name }} {{ ref.patient.first_name }} {{ ref.patient.middle_name }} — направлен {{ ref.created_at|date:"d.m.Y" }}</div>
+    <div class="meta">{% for r in ref.reasons|slice:":3" %}{% firstof r.reason r.title %}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
+    <form class="actions" method="post" action="/doctor/referral/{{ ref.id }}/accept/">{% csrf_token %}<input type="text" name="recommendations" placeholder="Рекомендации направившему врачу (по желанию)" style="flex:1 1 260px;min-height:32px;padding:4px 8px"><button class="btn small">Пациент принят</button></form></div>{% endfor %}
+</section>{% endif %}
 <div class="workspace-grid{% if not alerts %} no-alerts{% endif %}">
   <section class="patient-list-panel" aria-labelledby="list-heading">
     <div class="list-heading"><h2 id="list-heading">Список пациентов</h2><span class="muted small">{{ rows|length }} из {{ summary.total }}</span></div>
@@ -24,7 +30,7 @@
       <caption class="sr">Пациенты, закреплённые за вами</caption>
       <thead><tr><th scope="col">Пациент</th><th scope="col">Внимание</th><th scope="col">Шкалы</th><th scope="col">Приём</th></tr></thead>
       <tbody>{% for r in rows %}
-        <tr class="row-{{ r.risk }}">
+        <tr class="row-{{ r.risk }}{% if r.improving %} row-improving{% endif %}">
           <td class="patient-name-cell">
             <div class="patient-name-row"><span class="avatar patient-avatar" aria-hidden="true">{{ r.p.first_name|first }}{{ r.p.last_name|first }}</span><div><a class="name" href="/doctor/patient/{{ r.p.public_id }}/">{{ r.p.last_name }} {{ r.p.first_name }}<span class="patient-middle"> {{ r.p.middle_name }}</span></a><div class="small muted">{{ r.age }} лет{% if r.dx %} · {{ r.dx.icd10 }}{% endif %}</div></div></div>
             {% if r.dx %}<div class="small patient-diagnosis">{{ r.dx.title|truncatechars:60 }}</div>{% endif %}
@@ -34,8 +40,9 @@
             {% if r.risk == 'red' %}<span class="status-badge red">{% include "web/_icon.html" with name="warning" %}Нужно внимание</span>
             {% elif r.risk == 'amber' %}<span class="status-badge amber">{% include "web/_icon.html" with name="clock" %}Наблюдение</span>
             {% elif not r.has_observations %}<span class="status-badge neutral">Нет записей</span>
+            {% elif r.improving %}<span class="status-badge green improving">{% include "web/_icon.html" with name="activity" %}Улучшение</span>
             {% else %}<span class="status-badge green">{% include "web/_icon.html" with name="check" %}Нет открытых сигналов</span>{% endif %}
-            {% if r.alerts %}<div class="small muted row-note">Сигналов: {{ r.alerts }}</div>{% endif %}
+            {% if r.alerts %}<div class="small muted row-note">Сигналов: {{ r.alerts }}</div>{% endif %}{% if r.improving and r.risk != 'green' %}<div class="small row-note" style="color:var(--green)">Есть улучшение по шкалам</div>{% endif %}
           </td>
           <td class="patient-score-cell" data-label="Шкалы"><div class="score-pair"><span>PHQ-9 <b data-score="phq9">{% if r.phq %}{{ r.phq.total }}{% else %}—{% endif %}</b></span><span>GAD-7 <b data-score="gad7">{% if r.gad %}{{ r.gad.total }}{% else %}—{% endif %}</b></span></div></td>
           <td class="patient-adherence-cell" data-label="Приём">{% if r.adh %}<b class="adherence-value">{{ r.adh.pct }}%</b><div class="meter" role="img" aria-label="Отмечено принятыми {{ r.adh.pct }} процентов запланированных приёмов"><span style="width:{{ r.adh.pct }}%"></span></div><span class="small muted">по отметкам за 14 дней</span>{% else %}<span class="small muted">Нет данных<br>о приёме</span>{% endif %}</td>
@@ -45,10 +52,10 @@
   </section>
   {% if alerts %}<aside class="attention-rail" aria-labelledby="signals-heading">
     <div class="rail-heading"><span class="soft-icon rose">{% include "web/_icon.html" with name="bell" %}</span><div><h2 id="signals-heading">Сигналы</h2><p>Требуют вашего просмотра</p></div></div>
-    {% for a in alerts|slice:":5" %}<article class="alert-summary {{ a.severity }}">
-      <div class="alert-summary-top"><span class="severity-label">{% if a.severity == 'critical' %}{% include "web/_icon.html" with name="warning" %}Срочно{% elif a.severity == 'high' %}Важно{% else %}К сведению{% endif %}</span><time datetime="{{ a.created_at|date:'c' }}">{{ a.created_at|date:"d.m, H:i" }}</time></div>
-      <a class="alert-patient" href="{{ a.card_url }}">{% firstof a.patient a.patient_label %}</a><p>{{ a.title }}</p>
-      <a class="text-action" href="{{ a.card_url }}">Открыть карточку {% include "web/_icon.html" with name="arrow" %}</a>
+    {% for g in alerts|slice:":5" %}<article class="alert-summary {{ g.severity }}">
+      <div class="alert-summary-top"><span class="severity-label">{% if g.severity == 'critical' %}{% include "web/_icon.html" with name="warning" %}Экстренно{% elif g.severity == 'high' %}▲ Срочно{% elif g.severity == 'safety' %}⛨ Безопасность{% else %}● Внимание{% endif %}</span><time datetime="{{ g.created_at|date:'c' }}">{{ g.created_at|date:"d.m, H:i" }}</time></div>
+      <a class="alert-patient" href="{{ g.card_url }}">{% firstof g.patient g.label %}</a><p>{% for a in g.alerts %}{{ a.title }}{% if not forloop.last %}; {% endif %}{% endfor %}</p>
+      <a class="text-action" href="{{ g.card_url }}">Открыть карточку {% include "web/_icon.html" with name="arrow" %}</a>
     </article>{% endfor %}
     <a class="all-alerts-link" href="/doctor/alerts/">Все сигналы {% include "web/_icon.html" with name="arrow" %}</a>
   </aside>{% endif %}

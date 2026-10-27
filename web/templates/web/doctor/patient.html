@@ -26,33 +26,52 @@
 
 <nav class="card-sections" aria-label="Разделы карточки">
   {% if alerts %}<a href="#h-alerts">Сигналы <span>{{ alerts|length }}</span></a>{% endif %}
-  <a href="#h-route">Решения врача</a><a href="#h-rx">Терапия</a>
+  <a href="#h-route">{% if is_psychiatrist %}Решения врача{% else %}Направление{% endif %}</a><a href="#h-rx">Терапия</a>
   <a href="#h-dyn">Динамика</a><a href="#messages">Сообщения</a>
 </nav>
+{% if summary %}<section class="panel visit-summary" aria-labelledby="h-summary"><div class="section-heading"><h2 id="h-summary">Сводка перед приёмом</h2><span class="small muted">за 2 недели</span></div>
+  <ul class="summary-list">{% for line in summary %}<li>{{ line }}</li>{% endfor %}</ul></section>{% endif %}
 {% if alerts %}
 <section class="panel patient-alerts" aria-labelledby="h-alerts">
   <div class="section-heading"><h2 id="h-alerts">Сигналы пациента</h2><span class="small muted">{{ alerts|length }} открытых</span></div>
-  <p class="small muted">Отметка о просмотре фиксирует вашу реакцию. Она не заменяет помощь пациенту.</p>
-  {% for a in alerts %}{% include "web/doctor/_alert.html" %}{% endfor %}
+  <p class="small muted">Несколько сработавших правил — одна карточка с перечнем. Отметка фиксирует вашу реакцию и не заменяет помощь пациенту.</p>
+  {% with g=alert_group %}{% if g %}
+  <div class="sig {{ g.severity }}" id="alert-group">
+    <span class="tag">{% if g.severity == "critical" %}! ЭКСТРЕННО{% elif g.severity == "high" %}▲ СРОЧНО{% elif g.severity == "safety" %}⛨ БЕЗОПАСНОСТЬ{% else %}● ВНИМАНИЕ{% endif %}</span>
+    <div class="title">{% if g.alerts|length == 1 %}{{ g.alerts.0.title }}{% else %}Сработало правил: {{ g.alerts|length }}{% endif %}</div>
+    <div class="meta">
+      {% if g.alerts|length > 1 %}<ul style="margin:4px 0 0;padding-left:18px">{% for a in g.alerts %}<li><b>{% if a.severity == "critical" %}Экстренно{% elif a.severity == "high" %}Срочно{% elif a.severity == "safety" %}Безопасность{% else %}Внимание{% endif %}:</b> {{ a.title }} · {{ a.created_at|date:"d.m H:i" }}{% if a.status == "escalated" %}, передан резервному врачу{% endif %}{% if a.rule_id == "suicide_risk_text" and a.facts.suicide_keyword_matches %}. Фразы: «{{ a.facts.suicide_keyword_matches|join:"», «" }}»{% endif %}</li>{% endfor %}</ul>
+      {% else %}{% with a=g.alerts.0 %}{{ a.created_at|date:"d.m H:i" }}{% if a.delivery_latency_ms is not None %}, доставлен за {{ a.delivery_latency_ms|floatformat:0 }} мс{% endif %}{% if a.rule_id == "suicide_risk_text" and a.facts.suicide_keyword_matches %}. Фразы: «{{ a.facts.suicide_keyword_matches|join:"», «" }}»{% endif %}{% endwith %}{% endif %}
+      {% if g.severity == "critical" %}<p style="margin:6px 0 0">Подтвердите получение в течение 15 минут: дальше — повтор каждые 5 минут, через 30 минут — резервному врачу.</p>{% elif g.severity == "high" %}<p style="margin:6px 0 0">Ответ — в течение суток.</p>{% endif %}
+    </div>
+    <form class="actions" method="post" action="/doctor/patient/{{ p.public_id }}/alerts/ack/">{% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.path }}">
+      <input type="text" name="resolution" placeholder="Что сделано (например, позвонил пациенту)" aria-label="Что сделано" style="flex:1 1 220px;min-height:32px;padding:4px 8px">
+      <label class="fp-check"><input type="checkbox" name="false_positive" value="1"> Ложное срабатывание</label>
+      <button class="btn small">{% if g.severity == "critical" %}Подтвердить получение{% else %}Отметить как просмотренный{% endif %}</button>
+    </form>
+  </div>
+  {% endif %}{% endwith %}
 </section>
 {% endif %}
 <div class="patient-card-grid">
 <div class="clinical-column">
   <div class="column-label">{% include "web/_icon.html" with name="shield" %} Решения и лечение</div>
   <section class="panel" aria-labelledby="h-route">
-    <h2 id="h-route">{% if is_psychiatrist %}Оценка состояния{% else %}Консультация психиатра{% endif %}</h2><p class="small muted">По шкалам и записям пациента</p>
+    <h2 id="h-route">{% if is_psychiatrist %}Рекомендации по ведению{% else %}Направление к психиатру{% endif %}</h2><p class="small muted">По шкалам и записям пациента</p>
     {% if referral_done and not referrals %}
       <div class="sig ok"><span class="tag">Оформлено</span><div class="title">Направление к психиатру оформлено {{ referral_done.created_at|date:"d.m.Y" }}</div>
         <div class="meta">Срочность: {{ referral_done.get_urgency_display|lower }}. Система продолжает отслеживать состояние.</div></div>
     {% elif referrals or routing.urgency %}
       {% with urg=routing.urgency %}
-      <div class="sig {% if referrals.0.urgency == 'mandatory' or urg == 'mandatory' %}mandatory{% else %}desirable{% endif %}">
-        <span class="tag">{% if referrals.0.urgency == 'mandatory' or urg == 'mandatory' %}Обязательно{% else %}Желательно{% endif %}</span>
-        <div class="title">{% if is_psychiatrist %}Тяжесть состояния требует пересмотра плана{% else %}Направить к психиатру{% endif %}</div>
+      {% with level=route_level %}
+      <div class="sig {{ level }}">
+        <span class="tag">{% if level == 'emergency' %}➜ ОБЯЗАТЕЛЬНО · ЭКСТРЕННО{% elif level == 'mandatory' %}➜ ОБЯЗАТЕЛЬНО{% else %}➜ ЖЕЛАТЕЛЬНО{% endif %}</span>
+        <div class="title">{% if is_psychiatrist %}{% if level == 'desirable' %}Рекомендация по ведению: пересмотреть план{% else %}Тяжесть состояния требует пересмотра плана{% endif %}{% elif level == 'emergency' %}Экстренная психиатрическая помощь — сразу{% elif level == 'mandatory' %}Консультация психиатра — в течение 1–7 дней (срок выбираете вы){% else %}Плановая консультация психиатра{% endif %}</div>
         <div class="meta">
           <ul style="margin:4px 0 0;padding-left:18px">
           {% if not routing.reasons %}{% for ref in referrals %}{% for r in ref.reasons %}<li>{% firstof r.title r.reason %}</li>{% endfor %}{% endfor %}{% endif %}
-          {% for r in routing.reasons %}<li>{{ r.reason }}{% if r.urgency == "desirable" %} (желательно){% endif %}<br><span style="opacity:.85">Источник: {{ r.source }}</span></li>{% endfor %}
+          {% for r in routing.reasons %}<li>{{ r.reason }}{% if r.urgency == "desirable" and level != "desirable" %} (желательно){% endif %}<br><span style="opacity:.85">Источник: {{ r.source }}</span></li>{% endfor %}
           </ul>
           {% for r in routing.reasons %}{% if r.action %}<p style="margin:6px 0 0"><b>{{ r.action }}</b></p>{% endif %}{% endfor %}
         </div>
@@ -73,18 +92,27 @@
         {% endif %}
       </div>
       {% endwith %}
+      {% endwith %}
     {% else %}
       <div class="sig ok"><span class="tag">По доступным данным</span><div class="title">Система не выявила оснований для направления</div><div class="meta">Проверка учитывает заполненные шкалы, ответ на терапию и записи пациента. Отсутствие сигнала не заменяет оценку врача.</div></div>
     {% endif %}
-  </section>
+      {% if referral_feedback %}<div class="sig {% if referral_feedback.accepted_at %}ok{% else %}info{% endif %}" style="margin-top:12px"><span class="tag">{% if referral_feedback.accepted_at %}Пациент дошёл{% else %}Направлен{% endif %}</span>
+      <div class="title">{% if referral_feedback.accepted_at %}Принят психиатром {{ referral_feedback.accepted_by.user.get_full_name }} {{ referral_feedback.accepted_at|date:"d.m.Y" }}{% else %}Направление от {{ referral_feedback.created_at|date:"d.m.Y" }} — ждём, когда пациента примет психиатр{% endif %}</div>
+      <div class="meta">{% if referral_feedback.recommendations %}Рекомендации: {{ referral_feedback.recommendations }}{% elif referral_feedback.accepted_at %}Рекомендации появятся здесь.{% else %}Как только психиатр отметит приём, здесь появятся его рекомендации.{% endif %}</div></div>{% endif %}
+    {% if referral_text and not is_psychiatrist %}<details class="more referral-text"><summary>Готовый текст направления с краткой выпиской</summary>
+      <textarea readonly rows="9" id="ref-text">{{ referral_text }}</textarea>
+      <p class="actions-row"><button type="button" class="btn ghost small" onclick="navigator.clipboard.writeText(document.getElementById('ref-text').value);this.textContent='Скопировано'">Скопировать</button></p></details>
+    <form method="post" action="/doctor/patient/{{ p.public_id }}/material/" style="margin-top:8px">{% csrf_token %}<button class="btn ghost small">Отправить пациенту памятку «Зачем идти к психиатру»</button></form>{% endif %}
+</section>
 
+  {% if not is_psychiatrist and not aviandr.on_aviandr and not has_f_dx %}<details class="panel therapist-fold"><summary><b>Справка: Авиандр и безопасность терапии</b> <span class="small muted">— подбор лечения после консультации психиатра</span></summary>{% endif %}
   <section class="panel" aria-labelledby="h-av">
     <h2 id="h-av">Авиандр <span class="muted">маритупирдин, {{ aviandr.dosing }}</span></h2>
     {% if aviandr.on_aviandr %}<p><span class="light green">Пациент принимает Авиандр</span></p>{% endif %}
     <p><span class="light {{ aviandr.verdict }}">{% if aviandr.verdict == "red" %}Есть противопоказания по инструкции{% elif aviandr.verdict == "yellow" %}Можно с осторожностью — проверьте предупреждения{% else %}Противопоказаний и взаимодействий не найдено{% endif %}</span></p>
     {% for f in aviandr.findings %}
       <div class="sig {{ f.level }}">
-        <span class="tag">{% if f.level == "contraindication" %}Противопоказание{% elif f.level == "off_label" %}Вне инструкции{% else %}Осторожно{% endif %}</span>
+        <span class="tag">{% if f.level == "contraindication" %}⛨ Противопоказание{% elif f.level == "off_label" %}Вне инструкции{% elif f.level == "ok" %}✓ Без взаимодействия{% else %}Осторожно{% endif %}</span>
         <div class="title">{{ f.text }}</div>
         <div class="meta">{{ f.source }}</div>
       </div>
@@ -92,6 +120,9 @@
     <details class="more"><summary>Что сказать пациенту</summary>
       <ul>{% for w in aviandr.warnings %}<li>{{ w.text }}</li>{% endfor %}</ul>
     </details>
+    {% if not aviandr.on_aviandr and not is_psychiatrist and not has_f_dx %}
+    <div class="sig info"><span class="tag">Лечение</span><div class="title">Лечение — после консультации психиатра</div><div class="meta">Психиатрического диагноза нет: подбор препарата начинается после того, как психиатр поставит диагноз (Закон РФ № 3185-1). Показания Авиандра — ГТР и тревожные состояния, см. инструкцию.</div></div>
+    {% endif %}
     {% if not aviandr.on_aviandr %}
     <form method="post" action="/doctor/patient/{{ p.public_id }}/aviandr/" style="margin-top:8px">{% csrf_token %}
       <div class="field-row">
@@ -104,9 +135,47 @@
     </form>
     {% endif %}
   </section>
+  {% if not is_psychiatrist and not aviandr.on_aviandr and not has_f_dx %}</details>{% endif %}
+
+  <section class="panel" aria-labelledby="h-assess">
+    <h2 id="h-assess">{% if is_psychiatrist %}Оценка врача <span class="muted">HAM-A, CGI, Колумбийская шкала</span>{% else %}Скрининг <span class="muted">опросники пациента и Колумбийская шкала</span>{% endif %}</h2>
+    <dl class="kv small">
+      <dt>C-SSRS</dt><dd>{% if assess.cssrs %}<b>{{ assess.cssrs.label }}</b> — {{ assess.cssrs.detail }} ({{ assess.cssrs.r.created_at|date:"d.m.Y" }}, {{ assess.cssrs.r.get_filled_by_display|lower }}){% else %}не заполнялась{% endif %}</dd>
+      {% if is_psychiatrist %}<dt>HAM-A</dt><dd>{% if assess.hama %}<b>{{ assess.hama.r.total }}</b> / 56 — {{ assess.hama.label|lower }} ({{ assess.hama.r.created_at|date:"d.m.Y" }}){% else %}—{% endif %}</dd>
+      <dt>CGI-S</dt><dd>{% if assess.cgi_s %}{{ assess.cgi_s.r.total }} — {{ assess.cgi_s.label|lower }} ({{ assess.cgi_s.r.created_at|date:"d.m.Y" }}){% else %}—{% endif %}</dd>
+      <dt>CGI-I</dt><dd>{% if assess.cgi_i %}{{ assess.cgi_i.r.total }} — {{ assess.cgi_i.label|lower }} ({{ assess.cgi_i.r.created_at|date:"d.m.Y" }}){% else %}—{% endif %}</dd>
+      {% else %}<dt>PHQ-9</dt><dd>{% if latest_phq %}<b>{{ latest_phq.total }}</b> / 27{% if latest_phq.answers.8 %}, вопрос 9 = {{ latest_phq.answers.8 }}{% endif %}{% else %}—{% endif %}</dd>
+      <dt>GAD-7</dt><dd>{% if latest_gad %}<b>{{ latest_gad.total }}</b> / 21{% else %}—{% endif %}</dd>
+      <dt>AUDIT-C</dt><dd>{% if assess.auditc %}<b>{{ assess.auditc.r.total }}</b> / 12{% else %}—{% endif %}</dd>{% endif %}
+    </dl>
+    <p class="small muted">{% if is_psychiatrist %}По плану: HAM-A и CGI — на старте и на 4-й и 8-й неделе. {% endif %}Шкалы показывают выраженность симптомов, а не диагноз.</p>
+    {% if is_psychiatrist %}<details class="more"><summary>Заполнить HAM-A (14 пунктов, 0–4)</summary>
+      <form method="post" action="/doctor/patient/{{ p.public_id }}/assess/hama/" class="assess-form">{% csrf_token %}
+        {% for i, label in hama_items %}<div class="assess-row"><span>{{ forloop.counter }}. {{ label }}</span><span class="assess-opts">{% for v in "01234" %}<label><input type="radio" name="q{{ i }}" value="{{ v }}" required> {{ v }}</label>{% endfor %}</span></div>{% endfor %}
+        <p><button class="btn small">Сохранить HAM-A</button></p>
+      </form>
+    </details>
+    <details class="more"><summary>Заполнить CGI</summary>
+      <form method="post" action="/doctor/patient/{{ p.public_id }}/assess/cgi_s/" class="assess-form">{% csrf_token %}
+        <label for="cgi-s">Тяжесть (CGI-S)</label><select id="cgi-s" name="q0" required><option value="">—</option>{% for v, l in cgi_s %}<option value="{{ v }}">{{ v }} — {{ l }}</option>{% endfor %}</select>
+        <p><button class="btn small">Сохранить CGI-S</button></p>
+      </form>
+      <form method="post" action="/doctor/patient/{{ p.public_id }}/assess/cgi_i/" class="assess-form">{% csrf_token %}
+        <label for="cgi-i">Улучшение (CGI-I)</label><select id="cgi-i" name="q0" required><option value="">—</option>{% for v, l in cgi_i %}<option value="{{ v }}">{{ v }} — {{ l }}</option>{% endfor %}</select>
+        <p><button class="btn small">Сохранить CGI-I</button></p>
+      </form>
+    </details>{% endif %}
+    <details class="more"><summary>Провести Колумбийскую шкалу (скрининг, 6 вопросов)</summary>
+      <form method="post" action="/doctor/patient/{{ p.public_id }}/assess/cssrs/" class="assess-form">{% csrf_token %}
+        <p class="small muted">Если на вопрос 2 «нет» — вопросы 3–5 пропускаются. Вопрос «за 3 месяца» — только при «да» на 6.</p>
+        {% for i, label in cssrs_items %}<div class="assess-row"><span>{% if i == 6 %}6а{% else %}{{ forloop.counter }}{% endif %}. {{ label }}</span><span class="assess-opts"><label><input type="radio" name="q{{ i }}" value="1"> Да</label><label><input type="radio" name="q{{ i }}" value="0"> Нет</label></span></div>{% endfor %}
+        <p><button class="btn small">Сохранить C-SSRS</button></p>
+      </form>
+    </details>
+  </section>
 
   <section class="panel" aria-labelledby="h-rx">
-    <h2 id="h-rx">Текущая терапия</h2>{% if adh %}<p class="small muted">Отмеченный приём за 2 недели: {{ adh.pct }}%. Пропущено: {{ adh.missed }} · Не отмечено: {{ adh.unmarked }}</p>{% endif %}
+    <h2 id="h-rx">Текущая терапия</h2><p class="small muted">Назначения Авиандра — блоком выше. Другие препараты пациента учитываются при проверке взаимодействий.</p>{% if adh %}<p class="small muted">Отмеченный приём за 2 недели: {{ adh.pct }}%. Пропущено: {{ adh.missed }} · Не отмечено: {{ adh.unmarked }}</p>{% endif %}
     {% for r in rx %}
       <div class="prescription-row">
         <div><b>{{ r.drug_name }}</b> {{ r.dose_mg|floatformat:"-1" }} мг × {{ r.times_per_day }} р/сут<div class="small muted">с {{ r.start_date|date:"d.m.Y" }}{% if r.off_label %}, вне инструкции{% endif %}{% if r.comment %}. {{ r.comment }}{% endif %}</div></div>
@@ -115,6 +184,23 @@
     {% empty %}<p class="muted">Активных назначений нет.</p>{% endfor %}
     {% if adh %}<div class="meter" style="margin-top:12px"><span style="width:{{ adh.pct }}%"></span></div>{% endif %}
     {% if rx_stopped %}<p class="small muted" style="margin-top:8px">Отменены: {% for r in rx_stopped %}{{ r.drug_name }} ({{ r.end_date|date:"d.m.Y" }}){% if not forloop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+  </section>
+
+  {% if service_requests %}<section class="panel" aria-labelledby="h-services"><h2 id="h-services">Заявки пациента на услуги клиники</h2>
+    {% for r in service_requests %}<div class="prescription-row"><div><b>{{ r.title }}</b><div class="small muted">{{ r.created_at|date:"d.m.Y" }} · {{ r.get_status_display }}</div></div>{% if r.status == "new" %}<form method="post" action="/doctor/patient/{{ p.public_id }}/service/{{ r.id }}/done/">{% csrf_token %}<button class="btn ghost small">Обработана</button></form>{% endif %}</div>{% endfor %}
+  </section>{% endif %}
+
+  <section class="panel" aria-labelledby="h-team"><h2 id="h-team">Другие врачи пациента</h2>
+    <p class="small muted">Психолог, невролог, гинеколог, эндокринолог — с согласия пациента, для связи по лечению.</p>
+    {% for m in care_team %}<div class="small" style="padding:3px 0"><b>{{ m.specialty }}</b> — {{ m.name }}{% if m.contact %}, {{ m.contact }}{% endif %}</div>{% empty %}<p class="small muted">Пока никого.</p>{% endfor %}
+    <details class="more"><summary>Добавить врача</summary><form method="post" action="/doctor/patient/{{ p.public_id }}/team/" class="field-row">{% csrf_token %}
+      <div><label for="tm-s">Специальность</label><input id="tm-s" name="specialty" required placeholder="Психолог"></div><div><label for="tm-n">ФИО</label><input id="tm-n" name="name" required></div><div><label for="tm-c">Контакт</label><input id="tm-c" name="contact"></div>
+      <p><button class="btn small">Добавить</button></p></form></details>
+  </section>
+
+  <section class="panel" aria-labelledby="h-legal"><h2 id="h-legal">Юридические подсказки</h2>
+    {% for q, a, src in legal %}<details class="more legal-hint"><summary>{{ q }}</summary><p class="small">{{ a }}</p><p class="small muted">{{ src }}</p></details>{% endfor %}
+    <p class="small muted">Справочная информация; не заменяет консультацию юриста клиники.</p>
   </section>
 
   {% if contacts %}
@@ -130,22 +216,25 @@
   <section class="panel" aria-labelledby="h-dyn">
     <h2 id="h-dyn">Динамика по шкалам <span class="muted">PHQ-9 — депрессия, GAD-7 — тревога</span></h2>
     <div class="scale-summaries">
-      <div><span>PHQ-9 · депрессия</span><strong>{% if latest_phq %}{{ latest_phq.total }}<small> / 27</small>{% else %}—{% endif %}</strong><span>{% if latest_phq %}{{ latest_phq.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
-      <div><span>GAD-7 · тревога</span><strong>{% if latest_gad %}{{ latest_gad.total }}<small> / 21</small>{% else %}—{% endif %}</strong><span>{% if latest_gad %}{{ latest_gad.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+      <div><span>PHQ-9 · депрессивные симптомы</span><strong>{% if latest_phq %}{{ latest_phq.total }}<small> / 27</small>{% else %}—{% endif %}</strong><span>{% if latest_phq %}{{ latest_phq.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
+      <div><span>GAD-7 · тревожные симптомы</span><strong>{% if latest_gad %}{{ latest_gad.total }}<small> / 21</small>{% else %}—{% endif %}</strong><span>{% if latest_gad %}{{ latest_gad.created_at|date:"d.m.Y" }}{% else %}Нет ответов за 90 дней{% endif %}</span></div>
     </div>
     {% if chart.phq9 or chart.gad7 %}<div class="chart-box"><canvas id="ch-scales" role="img" aria-label="Динамика PHQ-9 и GAD-7 за последние 90 дней. Последние результаты указаны выше."></canvas></div>{% else %}<p class="chart-empty">График появится после заполнения опросника.</p>{% endif %}
-    <p class="src">Результаты опросников за последние 90 дней. Баллы шкал не являются диагнозом.</p>
+    {% if response %}<div class="sig {% if response.code == 'response' %}ok{% elif response.code == 'partial' %}desirable{% else %}mandatory{% endif %}" style="margin-top:12px"><span class="tag">{{ response.label }}</span><div class="title">{{ response.title }}: {{ response.current }} (было {{ response.baseline }}, {% if response.pct >= 0 %}−{{ response.pct }}{% else %}+{{ response.pct|stringformat:"d"|slice:"1:" }}{% endif %}%) — {{ response.weeks }}-я неделя терапии</div><div class="meta">Ответ — снижение на 50% и больше от исходного, частичный — 25–49%, меньше 25% — ответа нет.</div></div>{% endif %}
+    <p class="src">Результаты опросников за последние 90 дней. Баллы шкал показывают выраженность симптомов и не являются диагнозом.</p>
   </section>
   <section class="panel" aria-labelledby="h-diary">
-    <h2 id="h-diary">Дневник пациента <span class="muted">настроение и тревога, 0–10</span></h2>
-    {% if last_checkin %}<div class="chart-box"><canvas id="ch-diary" role="img" aria-label="Динамика настроения и тревоги. Последняя запись приведена ниже."></canvas></div><p class="src">Настроение: 10 — лучше. Тревога: 10 — сильнее. До 30 последних записей.</p>{% else %}<p class="chart-empty">Пациент ещё не заполнял дневник.</p>{% endif %}
+    <h2 id="h-diary">Дневник пациента <span class="muted">настроение и спокойствие, 0–10 (10 — хорошо)</span></h2>
+    {% if last_checkin %}<div class="chart-box"><canvas id="ch-diary" role="img" aria-label="Динамика настроения и тревоги. Последняя запись приведена ниже."></canvas></div><p class="src">Обе линии: 10 — хорошо (спокойствие = 10 − тревога). До 30 последних записей.</p>{% else %}<p class="chart-empty">Пациент ещё не заполнял дневник.</p>{% endif %}
     {% if last_checkin %}
     <dl class="kv small" style="margin-top:12px">
       <dt>Последняя запись</dt><dd>{{ last_checkin.created_at|date:"d.m H:i" }}</dd>
-      <dt>Настроение / тревога</dt><dd>{{ last_checkin.mood }} / {{ last_checkin.anxiety }} из 10</dd>
+      <dt>Настроение / спокойствие</dt><dd>{{ last_checkin.mood }} / {{ last_checkin.calm }} из 10</dd>
       <dt>Сон</dt><dd>{% if last_checkin.sleep_hours != None %}{{ last_checkin.sleep_hours|floatformat:"-1" }}{% else %}—{% endif %} ч</dd>
       <dt>Выходил из дома / ел</dt><dd>{{ last_checkin.left_home|yesno:"да,нет,—" }} / {{ last_checkin.ate_normally|yesno:"да,нет,—" }}</dd>
-      <dt>Алкоголь</dt><dd>{{ last_checkin.alcohol_units }} порц.</dd>
+      <dt>Алкоголь</dt><dd>{% if last_checkin.alcohol_units %}{{ last_checkin.alcohol_drink }}, {{ last_checkin.alcohol_ml }} мл, {{ last_checkin.alcohol_abv|floatformat:"-1" }}% — {{ last_checkin.alcohol_units|floatformat:"-1" }} ст. порц.{% else %}нет{% endif %}</dd>
+      {% if last_checkin.other_substances %}<dt>Без назначения врача</dt><dd>{{ last_checkin.other_substances_text|default:"да" }}</dd>{% endif %}
+      {% if last_checkin.joy %}<dt>Что могло бы порадовать</dt><dd>«{{ last_checkin.joy }}»</dd>{% endif %}
       {% if last_checkin.side_effects %}<dt>Нежелательные явления</dt><dd>{{ last_checkin.side_effects|join:", " }}</dd>{% endif %}
       {% if last_checkin.text %}<dt>Своими словами</dt><dd>«{{ last_checkin.text }}»</dd>{% endif %}
     </dl>
