@@ -1,0 +1,111 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{{ title }} | Клинический компас{% endblock %}
+
+{% block branding %}
+<h1 id="site-name"><a href="{% url 'admin:index' %}">Лямбда · Администрирование</a></h1>
+<a href="{% url 'upload_rules' %}" style="color: white; margin-left: 20px;">Загрузить правила</a>
+{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <!-- Подключаем стили из кабинетов Стаса -->
+    <link rel="stylesheet" href="{% static 'web/app.css' %}">
+    <!-- Подключаем шрифт Golos Text -->
+    <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+        <style>
+        /* Базовые настройки */
+        body {
+            font-family: 'Golos Text', sans-serif !important;
+        }
+
+        /* Шапка */
+        #header {
+            background: var(--brand, #6b4eff) !important;
+            color: white !important;
+        }
+        #branding h1, #branding h1 a:link, #branding h1 a:visited {
+            color: white !important;
+        }
+        #user-tools a:link, #user-tools a:visited {
+            color: white !important;
+        }
+
+        /* Хлебные крошки (убираем темно-зеленый фон) */
+        div.breadcrumbs {
+            background: #f4f4f4 !important;
+            color: #333 !important;
+        }
+        div.breadcrumbs a {
+            color: var(--brand, #6b4eff) !important;
+        }
+
+        /* Заголовки модулей (таблиц) */
+        .module h2, .module caption, .inline-group h2 {
+            background: var(--brand, #6b4eff) !important;
+            color: white !important;
+        }
+
+        /* Названия моделей в списке (делаем черными) */
+        .module table th a:link, .module table th a:visited, 
+        .module table td a:link, .module table td a:visited {
+            color: #333 !important;
+        }
+        
+        /* Заголовки в формах */
+        .module h2 {
+            color: white !important;
+        }
+
+        /* Кнопки */
+        .button, input[type=submit], input[type=button], .submit-row input, a.button {
+            background: var(--brand, #6b4eff) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 20px !important;
+            padding: 10px 20px !important;
+            font-weight: 500 !important;
+            text-transform: none !important;
+            transition: background 0.2s ease;
+            box-sizing: border-box !important;
+            
+        }
+
+        .button:hover, input[type=submit]:hover, input[type=button]:hover, .submit-row input:hover, a.button:hover {
+            background: #4a35c0 !important;
+        }
+
+        /* Кнопка "Удалить" (фиксим размеры) */
+        .deletelink, .submit-row input[name="_delete"] {
+            background: #e74c3c !important;
+            border-radius: 20px !important;
+            color: white !important;
+            padding: 10px 20px !important;
+            box-sizing: border-box !important;
+            height: auto !important;
+        }
+        .deletelink:hover, .submit-row input[name="_delete"]:hover {
+            background: #c0392b !important;
+        }
+
+        /* Ссылки "Добавить" */
+        .addlink {
+            background: transparent !important;
+            color: var(--brand, #6b4eff) !important;
+            font-weight: 500 !important;
+        }
+
+        /* Поля ввода */
+        input[type=text], input[type=password], input[type=email], input[type=url], input[type=number], textarea, select {
+            border: 1px solid #ccc !important;
+            border-radius: 8px !important;
+            padding: 8px !important;
+        }
+        input[type=text]:focus, input[type=password]:focus, input[type=email]:focus, input[type=url]:focus, input[type=number]:focus, textarea:focus, select:focus {
+            border-color: var(--brand, #6b4eff) !important;
+            outline: none !important;
+        }
+    </style>
+{% endblock %}
