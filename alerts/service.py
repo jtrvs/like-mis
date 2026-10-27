@@ -13,13 +13,16 @@ from datetime import timedelta
 from pathlib import Path
 
 import logging
+import hashlib
 
 import yaml
 from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from clinical.engine import rules
+from rules.models import RuleVersion
 
 from . import channels
 from . import facts as facts_mod
@@ -44,6 +47,8 @@ def _checked(data):
             errs.append(f"категория {r.get('severity')!r}")
         if errs:
             raise ValueError(f"Правило {r['id']}: {errs}")
+            
+    cache.set('alert_rules_cache', {'hash': current_hash, 'data': data}, timeout=None)
     return data
 
 
