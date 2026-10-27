@@ -10,6 +10,7 @@
 """
 from functools import lru_cache
 from pathlib import Path
+
 import yaml
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -19,22 +20,11 @@ REPO_FILES = {
     "aviandr": DATA_DIR / "drugs" / "aviandr.yaml",
 }
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
 def _load(path: Path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
-def _get_db_rule(file_type: str):
-    """Пытается получить активную версию правила из базы."""
-    try:
-        active_version = RuleVersion.objects.filter(file_type=file_type, is_active=True).first()
-        if active_version:
-            return yaml.safe_load(active_version.content)
-    except Exception:
-        # Если БД недоступна (например, при миграциях), молча падаем в файл
-        pass
-    return None
 
 def active_version(file_type: str):
     """Активная версия правил из базы или None (нет версии / база недоступна, например при миграциях)."""
@@ -94,9 +84,11 @@ def scales() -> dict:
             s.setdefault("period", src.get("period"))
     return out
 
+
 @lru_cache
 def drug_classes() -> dict:
     return {k.lower(): v for k, v in _load(DATA_DIR / "drug_classes.yaml").items()}
+
 
 @lru_cache
 def clinic_services() -> list:
@@ -107,10 +99,12 @@ def clinic_services() -> list:
 def routing_rules() -> list:
     return versioned("routing")["rules"]
 
+
 @lru_cache
 def trade_names() -> dict:
     p = DATA_DIR.parent.parent / "extraction" / "data" / "drug_names.yaml"
     return {k.lower(): v for k, v in _load(p).items()} if p.exists() else {}
+
 
 def reload():
     """Сброс кеша (после загрузки правил через админку; другие процессы заметят новую версию сами)."""
