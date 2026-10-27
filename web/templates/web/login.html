@@ -3,7 +3,7 @@
 {% block body %}
 <main class="login-page" id="main-content">
   <section class="login-intro" aria-labelledby="intro-title">
-    <a class="brand-lockup" href="/login/" aria-label="Лямбда — вход в кабинет"><span class="brand-symbol">{% include "web/_icon.html" with name="lambda" %}</span><span><strong>Лямбда</strong><small>Ассистент врача</small></span></a>
+    <a class="brand-lockup" href="/login/" aria-label="Лямбда — вход в кабинет"><span class="brand-symbol">{% include "web/_icon.html" with name="compass" %}</span><span><strong>Лямбда</strong><small>Клинический компас</small></span></a>
     <div class="intro-copy">
       <span class="eyebrow">Врач и пациент на связи</span>
       <h1 id="intro-title">Наблюдение <br>между приёмами</h1>
@@ -19,7 +19,7 @@
   </section>
   <section class="login-form-section" aria-labelledby="login-title">
     <div class="login-form-card">
-      <span class="eyebrow">Личный кабинет</span><h2 id="login-title">Вход в кабинет</h2>
+      <span class="eyebrow">Личный кабинет</span><h2 id="login-title">С возвращением</h2>
       <p class="muted">Введите логин и пароль. Ваш кабинет откроется автоматически.</p>
       {% include "web/_flash.html" %}
       {% if form.errors %}<div class="flash error" role="alert" id="login-error">Неверный логин или пароль. Проверьте данные и попробуйте ещё раз.</div>{% endif %}

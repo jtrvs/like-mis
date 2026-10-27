@@ -28,8 +28,7 @@ class Channel:
         # В сторонний мессенджер — только факт сигнала, метка и ссылка. Что именно случилось (это сведения о здоровье),
         # врач видит после входа в кабинет.
         base = os.environ.get("PUBLIC_BASE_URL", "http://localhost:8000")
-        kind = "срочное событие" if alert.severity in ("critical", "high") else "новое событие"
-        return f"Лямбда: у пациента {alert.patient_label} {kind}. Откройте кабинет: {base}/alerts/#alert-{alert.id}"
+        return f"Лямбда: новый сигнал «{alert.get_severity_display()}», пациент {alert.patient_label}.\nОткрыть: {base}/alerts/#alert-{alert.id}"
 
 
 class InApp(Channel):
@@ -82,6 +81,5 @@ class Telegram(Channel):
 
 REGISTRY = {c.name: c for c in (InApp, Log, Email, Telegram)}
 
-# Красный — сразу в кабинет + вторым каналом (все включённые каналы); оранжевый — сразу в кабинет;
-# жёлтый и «безопасность» — в карточку (сводка). Таблица правил, «Как выглядят категории».
-BY_SEVERITY = {"critical": None, "high": {"inapp", "log"}, "medium": {"inapp"}, "safety": {"inapp"}}
+# Срочные — во все включённые каналы; важные — кабинет и мессенджер; «к сведению» — только кабинет
+BY_SEVERITY = {"critical": None, "high": {"inapp", "log", "telegram"}, "medium": {"inapp"}}

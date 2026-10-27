@@ -2,11 +2,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 
-from core.models import CareLink, Condition, PatientProfile, PatientReport, TrustedContact
-
-# Признаки серотонинового синдрома (таблица правил, 1.6) — спрашиваем, если Авиандр сочетается
-# с антидепрессантом, трамадолом и др. (правило 2.4)
-SEROTONIN_SIGNS = ["жар", "дрожь", "подёргивания мышц", "сильное возбуждение", "сильный пот", "диарея"]
+from core.models import CareLink, Condition, PatientProfile, TrustedContact
 
 CONDITION_CHOICES = [
     ("epilepsy", "Эпилепсия"),
@@ -42,8 +38,8 @@ class NewPatientForm(forms.ModelForm):
 class JoinForm(forms.Form):
     code = forms.CharField(label="Код от врача", max_length=16)
     username = forms.CharField(label="Придумайте логин", max_length=64)
-    password = forms.CharField(label="Пароль", widget=forms.PasswordInput(attrs={"data-show-password": "1"}), help_text="Не короче 8 символов")
-    consent_pd = forms.BooleanField(label="Согласен(на) на обработку моих персональных данных, включая сведения о здоровье, лечащим врачом (152-ФЗ, ст. 10). Данные хранятся в России и не передаются работодателю, родственникам или другим людям")
+    password = forms.CharField(label="Пароль", widget=forms.PasswordInput, help_text="Не короче 8 символов")
+    consent_pd = forms.BooleanField(label="Согласен(на) на обработку моих персональных данных, включая сведения о здоровье, лечащим врачом (152-ФЗ, ст. 10)")
     consent_remote = forms.BooleanField(label="Согласен(на) на дистанционное наблюдение: мои ответы и дневник попадают в карточку у моего врача")
 
     def clean_code(self):
@@ -70,70 +66,16 @@ class JoinForm(forms.Form):
         return p
 
 
-# Напитки: крепкость по умолчанию, пациент может поправить. Стандартная порция — 10 г спирта (ВОЗ).
-DRINKS = [("", "Не пил(а)"), ("beer", "Пиво"), ("wine", "Вино"), ("strong", "Крепкий напиток (водка, коньяк, виски)"),
-          ("cocktail", "Коктейль, сидр, слабоалкогольное"), ("other", "Другое")]
-DEFAULT_ABV = {"beer": 5, "wine": 12, "strong": 40, "cocktail": 7, "other": 12}
-
-
-def standard_units(ml, abv):
-    """Стандартные порции: мл × крепость × 0,789 г/мл / 10 г."""
-    if not ml or not abv:
-        return 0
-    return round(ml * abv / 100 * 0.789 / 10, 1)
-
-
 class CheckinForm(forms.Form):
-    # Обе шкалы направлены одинаково: 10 — хорошо («настроение отличное», «спокойно»)
     mood = forms.IntegerField(label="Настроение", min_value=0, max_value=10)
-    calm = forms.IntegerField(label="Спокойствие", min_value=0, max_value=10)
+    anxiety = forms.IntegerField(label="Тревога", min_value=0, max_value=10)
     sleep_hours = forms.FloatField(label="Сон", min_value=0, max_value=24, required=False)
     left_home = forms.TypedChoiceField(label="Выходили из дома", choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
-    # «Нет» = 0–1 приём пищи за день (правило 1.9 «почти не ест»)
     ate_normally = forms.TypedChoiceField(label="Питание", choices=[("1", "Да"), ("0", "Нет")], coerce=lambda v: v == "1", required=False, empty_value=None)
-    alcohol_drink = forms.ChoiceField(label="Алкоголь", choices=DRINKS, required=False)
-    alcohol_ml = forms.IntegerField(label="Сколько, мл", min_value=1, max_value=5000, required=False)
-    alcohol_abv = forms.FloatField(label="Крепость, %", min_value=0.5, max_value=96, required=False)
-    other_substances = forms.TypedChoiceField(label="Что-то без назначения врача", choices=[("1", "Да"), ("0", "Нет")],
-                                              coerce=lambda v: v == "1", required=False, empty_value=None)
-    other_substances_text = forms.CharField(label="Что именно", required=False, max_length=255)
+    alcohol_units = forms.IntegerField(label="Алкоголь", min_value=0, max_value=50, required=False)
     side_effects = forms.MultipleChoiceField(label="Самочувствие", required=False, choices=[(x, x) for x in [
         "сонливость", "головокружение", "головная боль", "тошнота", "бессонница", "усиление тревоги", "слабость", "онемение или покалывание"]])
-    side_effect_level = forms.TypedChoiceField(label="Насколько это мешает", required=False, coerce=int, empty_value=1,
-                                               choices=[("1", "Слегка"), ("2", "Сильно"), ("3", "Мешает обычной жизни")])
-    serotonin_signs = forms.MultipleChoiceField(label="Есть ли сейчас", required=False, choices=[(x, x) for x in SEROTONIN_SIGNS])
-    joy = forms.CharField(label="Что сегодня могло бы вас порадовать?", required=False, max_length=500)
     text = forms.CharField(label="Своими словами", required=False, max_length=3000)
-    private_text = forms.CharField(label="Личная заметка", required=False, max_length=3000)
-
-    def clean(self):
-        d = super().clean()
-        drink = d.get("alcohol_drink")
-        if drink:
-            if not d.get("alcohol_ml"):
-                self.add_error("alcohol_ml", "Укажите примерный объём в мл.")
-            d["alcohol_abv"] = d.get("alcohol_abv") or DEFAULT_ABV.get(drink, 12)
-        d["alcohol_units"] = standard_units(d.get("alcohol_ml"), d.get("alcohol_abv")) if drink else 0
-        return d
-
-
-class PatientReportForm(forms.ModelForm):
-    kind = forms.ChoiceField(label="Что произошло", choices=PatientReport.KINDS, widget=forms.RadioSelect)
-    extra_tablets = forms.IntegerField(label="Сколько таблеток сверх назначенного", min_value=1, max_value=200, required=False)
-    feels_bad = forms.TypedChoiceField(label="Вы плохо себя чувствуете?", choices=[("1", "Да"), ("0", "Нет")],
-                                       coerce=lambda v: v == "1", required=False, empty_value=None, widget=forms.RadioSelect)
-    reason = forms.ChoiceField(label="Почему перестали", choices=[("", "—")] + PatientReport.REASONS, required=False)
-    text = forms.CharField(label="Комментарий (необязательно)", required=False, max_length=1000, widget=forms.Textarea(attrs={"rows": 2}))
-
-    class Meta:
-        model = PatientReport
-        fields = ["kind", "extra_tablets", "feels_bad", "reason", "text"]
-
-    def clean(self):
-        d = super().clean()
-        if d.get("kind") == "extra_dose" and not d.get("extra_tablets"):
-            self.add_error("extra_tablets", "Укажите, сколько таблеток вы приняли сверх назначенного.")
-        return d
 
 
 class TrustedContactForm(forms.ModelForm):

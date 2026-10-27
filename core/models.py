@@ -198,61 +198,16 @@ class ScaleResponse(models.Model):
 
 
 class DailyCheckin(models.Model):
-    """
-    Короткий ежедневный самоотчёт пациента. Обе шкалы направлены одинаково — 10 значит «хорошо»:
-    пациент отмечает «Настроение» и «Спокойствие»; в базе спокойствие хранится как тревога (anxiety = 10 − спокойствие),
-    чтобы правила и графики врача оставались в клиническом смысле («тревога выросла»).
-    kind: full — обычная запись; one — ответ на один вопрос после паузы; worse — кнопка «Мне сегодня хуже».
-    """
+    """Короткий ежедневный самоотчёт пациента (настроение, сон, тревога 0-10) + свободный текст."""
 
-    KINDS = [("full", "Запись дня"), ("one", "Один вопрос"), ("worse", "«Мне сегодня хуже»")]
     patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="checkins")
-    kind = models.CharField(max_length=8, choices=KINDS, default="full")
-    mood = models.PositiveSmallIntegerField(null=True, blank=True)
-    anxiety = models.PositiveSmallIntegerField(null=True, blank=True)
+    mood = models.PositiveSmallIntegerField()
+    anxiety = models.PositiveSmallIntegerField()
     sleep_hours = models.FloatField(null=True, blank=True)
     left_home = models.BooleanField(null=True)
     ate_normally = models.BooleanField(null=True)
-    # алкоголь: пациент указывает напиток, объём и крепость, стандартные порции (10 г спирта) система считает сама
-    alcohol_units = models.FloatField(default=0)
-    alcohol_drink = models.CharField(max_length=64, blank=True)
-    alcohol_ml = models.PositiveIntegerField(null=True, blank=True)
-    alcohol_abv = models.FloatField(null=True, blank=True, help_text="крепость, % об.")
-    other_substances = models.BooleanField(null=True, help_text="принимал что-то, что не назначал врач")
-    other_substances_text = models.CharField(max_length=255, blank=True)
-    joy = models.CharField(max_length=500, blank=True, help_text="«Что сегодня могло бы вас порадовать?»")
-    private_text = models.TextField(blank=True, help_text="личная заметка — видна только пациенту")
-
-    @property
-    def calm(self):
-        return None if self.anxiety is None else 10 - self.anxiety
+    alcohol_units = models.PositiveSmallIntegerField(default=0)
     side_effects = models.JSONField(default=list, blank=True)
-    # 0 — нет, 1 — слегка, 2 — сильно, 3 — мешают обычной жизни (правило 2.9)
-    side_effect_level = models.PositiveSmallIntegerField(default=0)
-    serotonin_signs = models.JSONField(default=list, blank=True, help_text="признаки серотонинового синдрома (правило 1.6)")
-    text = models.TextField(blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-
-
-class PatientReport(models.Model):
-    """Пациент сообщает врачу о приёме лекарства или о беременности (правила 1.4, 1.5, 4.4–4.6)."""
-
-    KINDS = [
-        ("extra_dose", "Принял(а) больше назначенного"),
-        ("stopped", "Перестал(а) принимать"),
-        ("reduced", "Сам(а) уменьшил(а) дозу"),
-        ("pregnancy", "Беременность"),
-        ("breastfeeding", "Кормление грудью"),
-    ]
-    REASONS = [
-        ("side_effects", "Побочные эффекты"), ("better", "Стало лучше"), ("expensive", "Дорого"),
-        ("forget", "Забываю"), ("other", "Другое"),
-    ]
-    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="reports")
-    kind = models.CharField(max_length=16, choices=KINDS)
-    extra_tablets = models.PositiveSmallIntegerField(null=True, blank=True, help_text="сколько таблеток сверх назначенного")
-    feels_bad = models.BooleanField(null=True, blank=True)
-    reason = models.CharField(max_length=16, choices=REASONS, blank=True)
     text = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -270,39 +225,12 @@ class Message(models.Model):
 class Referral(models.Model):
     """Направление к психиатру (задача 8). Система предлагает, врач подтверждает."""
 
-    URGENCY = [("emergency", "Обязательно, экстренно"), ("mandatory", "Обязательно"), ("desirable", "Желательно")]
+    URGENCY = [("mandatory", "Обязательно"), ("desirable", "Желательно")]
     STATUS = [("proposed", "Предложено"), ("confirmed", "Подтверждено врачом"), ("rejected", "Отклонено врачом")]
     patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="referrals")
     urgency = models.CharField(max_length=16, choices=URGENCY)
     reasons = models.JSONField(help_text="список причин с источниками")
     status = models.CharField(max_length=16, choices=STATUS, default="proposed")
-    created_at = models.DateTimeField(auto_now_add=True)
-    # обратная связь направившему врачу: психиатр принял пациента и оставил рекомендации
-    accepted_by = models.ForeignKey(DoctorProfile, null=True, blank=True, on_delete=models.SET_NULL, related_name="accepted_referrals")
-    accepted_at = models.DateTimeField(null=True, blank=True)
-    recommendations = models.TextField(blank=True)
-
-
-class CareTeamMember(models.Model):
-    """Другие врачи пациента (психолог, невролог, гинеколог, эндокринолог) — контакты для связи с согласия пациента."""
-
-    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="care_team")
-    name = models.CharField(max_length=128)
-    specialty = models.CharField(max_length=64)
-    contact = models.CharField(max_length=128, blank=True)
-    note = models.CharField(max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-class ServiceRequest(models.Model):
-    """Заявка пациента на услугу клиники (доп. приём, психолог, КПТ) — показывается только по клиническому поводу."""
-
-    STATUS = [("new", "Новая"), ("done", "Обработана")]
-    patient = models.ForeignKey(PatientProfile, on_delete=models.CASCADE, related_name="service_requests")
-    service = models.CharField(max_length=32)
-    title = models.CharField(max_length=128)
-    reason = models.CharField(max_length=255, blank=True)
-    status = models.CharField(max_length=8, choices=STATUS, default="new")
     created_at = models.DateTimeField(auto_now_add=True)
 
 

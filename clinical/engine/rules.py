@@ -50,6 +50,4 @@ def validate(cond: dict, known_facts: set[str] | None = None) -> list[str]:
             errs.append(f"оператор {cond.get('op')!r}")
         if known_facts is not None and cond.get("fact") not in known_facts:
             errs.append(f"неизвестный факт {cond.get('fact')!r}")
-        if cond.get("op") in ("gte", "gt", "lte", "lt") and not isinstance(cond.get("value"), (int, float)):
-            errs.append(f"для {cond.get('fact')!r} нужно число в value")
     return errs

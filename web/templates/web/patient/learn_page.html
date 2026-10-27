@@ -1,9 +1,0 @@
-{% extends "web/patient/base.html" %}
-{% block title %}{{ page.title }} — Лямбда{% endblock %}
-{% block heading %}{{ page.title }}{% endblock %}
-{% block main %}
-<a class="text-action back-link" href="/me/learn/">← Полезно знать</a>
-<p class="page-description">{{ page.lead }}</p>
-{% for h, items in page.sections %}<section class="panel learn-section"><h2>{{ h }}</h2><ul>{% for i in items %}<li>{{ i }}</li>{% endfor %}</ul></section>{% endfor %}
-<p class="small muted">Источник: {{ page.source }}</p>
-{% endblock %}

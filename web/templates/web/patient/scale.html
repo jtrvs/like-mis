@@ -1,20 +1,21 @@
 {% extends "web/patient/base.html" %}
 {% load static %}
 {% block head %}<script src="{% static 'web/patient-forms.js' %}" defer></script>{% endblock %}
-{% block title %}{{ title }} — Лямбда{% endblock %}
-{% block heading %}{{ title }}{% endblock %}
+{% block title %}{{ s.title }} — Лямбда{% endblock %}
+{% block heading %}{{ s.title }}{% endblock %}
 {% block main %}
 <a class="text-action back-link" href="/me/">← На сегодня</a>
-<div class="form-intro"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><b>Несколько вопросов о том, как вы себя чувствовали{% if s.period %} — {{ s.period }}{% endif %}</b><p>Здесь нет правильных и неправильных ответов. Ваши ответы увидит только ваш лечащий врач.</p></div></div>
+<div class="form-intro"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><b>{{ s.items }} вопросов о самочувствии</b><p>Как часто за {{ s.period }} вас беспокоило следующее?</p></div></div>
+<p class="field-hint">Выберите один ответ в каждом вопросе. Результат увидит ваш врач.</p>
 {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
 <form method="post" class="patient-form scale-form" data-progress-form>{% csrf_token %}
   <div class="form-progress"><span data-progress-text aria-live="polite">Отвечено: 0 из {{ s.items }}</span><progress value="0" max="{{ s.items }}" aria-label="Количество ответов"></progress></div>
-  {% for i, label, opts, selected in items %}
+  {% for i, label, selected in items %}
   <fieldset class="q form-card"><legend><span class="question-number">{{ forloop.counter }}</span> {{ label }}</legend>
-    <div class="opts">{% for v, l in opts %}<label><input type="radio" name="q{{ i }}" value="{{ v }}" {% if selected == v|stringformat:"s" %}checked{% endif %} required> {{ l }}</label>{% endfor %}</div>
+    <div class="opts">{% for v, l in labels %}<label><input type="radio" name="q{{ i }}" value="{{ v }}" {% if selected == v|stringformat:"s" %}checked{% endif %} required> {{ l }}</label>{% endfor %}</div>
   </fieldset>
   {% endfor %}
-  <div class="form-submit"><button class="btn block">Отправить ответы</button><p class="small muted">Опросник помогает наблюдать за самочувствием и не заменяет консультацию врача.</p></div>
+  <div class="form-submit"><button class="btn block">Отправить ответы</button><p class="small muted">Опросник помогает наблюдать за состоянием и не заменяет консультацию врача.</p></div>
   <p class="small muted">{{ s.source.original }}</p>
 </form>
 {% endblock %}

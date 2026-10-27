@@ -14,18 +14,11 @@ def upload_rules(request):
         file_type = request.POST.get('file_type')
         content = request.POST.get('content')
         
-        if request.POST.get('reset'):
-            # «Вернуть версию из репозитория»: все версии этого типа неактивны — работает файл из кода
-            RuleVersion.objects.filter(file_type=file_type, is_active=True).update(is_active=False)
-            loader.reload()
-            messages.success(request, "Активна версия из репозитория.")
-            return redirect(f"{request.path}?file_type={file_type}")
-        # Проверка: YAML, известные факты и операторы, категории, источники, обязательные правила
-        from clinical.engine.validate import validate_text
-        errors = validate_text(file_type, content)
-        if errors:
-            for e in errors[:20]:
-                messages.error(request, e)
+        # Валидация YAML
+        try:
+            yaml.safe_load(content)
+        except yaml.YAMLError as e:
+            messages.error(request, f"Ошибка в YAML: {e}")
             return render(request, 'admin/upload_rules.html', {
                 'file_types': RuleVersion.FILE_TYPES,
                 'initial_content': content,
@@ -51,6 +44,7 @@ def upload_rules(request):
         
         # Сбрасываем кеши
         loader.reload()
+        cache.delete('alert_rules_cache')
 
         messages.success(request, "Правила успешно загружены и активированы!")
         return redirect('admin:index')

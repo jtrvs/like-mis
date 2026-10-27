@@ -1,24 +1,15 @@
 {% extends "web/patient/base.html" %}
 {% block title %}Сегодня — Лямбда{% endblock %}
-{% block heading %}{% if first_visit %}Рады видеть вас, {{ p.first_name }}{% else %}Здравствуйте, {{ p.first_name }}{% endif %}{% endblock %}
+{% block heading %}Здравствуйте, {{ p.first_name }}{% endblock %}
 {% block main %}
 <p class="today-date">{% now "j E, l" %}</p>
 <section class="checkin-hero" aria-labelledby="checkin-title">
   <div class="checkin-hero-top"><span class="eyebrow">Дневник самочувствия</span><span class="hero-heart" aria-hidden="true">{% include "web/_icon.html" with name="heart" %}</span></div>
   <h2 id="checkin-title">Как вы сегодня?</h2>
   {% if checked_today %}<p>Запись за сегодня сохранена.<br>Если что-то изменилось, добавьте ещё одну.</p><a class="btn" href="/me/checkin/">Добавить запись {% include "web/_icon.html" with name="plus" %}</a>
-  {% else %}<p>Отметьте настроение, спокойствие и сон.<br>Ваш врач увидит запись в карточке.</p><a class="btn" href="/me/checkin/">Отметить самочувствие {% include "web/_icon.html" with name="arrow" %}</a>{% endif %}
+  {% else %}<p>Отметьте настроение, тревогу и сон.<br>Запись появится в вашей карточке у врача.</p><a class="btn" href="/me/checkin/">Отметить самочувствие {% include "web/_icon.html" with name="arrow" %}</a>{% endif %}
   <span class="hero-time">{% include "web/_icon.html" with name="clock" %}Около минуты</span>
 </section>
-<form method="post" action="/me/worse/" class="worse-form">{% csrf_token %}<button class="worse-button" type="submit"><span class="soft-icon rose">{% include "web/_icon.html" with name="heart" %}</span><span><b>Мне сегодня хуже</b><small>Одна кнопка — без вопросов. Врач увидит.</small></span></button></form>
-{% if quiet_days is not None and quiet_days >= 3 or request.GET.one %}
-<section class="panel one-question" aria-labelledby="one-q"><h2 id="one-q">{% if request.GET.one %}Один вопрос — если есть силы{% else %}Как вы? Ответьте всего на один вопрос{% endif %}</h2>
-  <p class="small muted">Какое у вас сегодня настроение? 0 — очень плохое, 10 — отличное.</p>
-  <form method="post" action="/me/one/" class="one-scale">{% csrf_token %}
-    {% for i in one_range %}<button class="one-btn" name="mood" value="{{ i }}">{{ i }}</button>{% endfor %}
-  </form>
-</section>{% endif %}
-{% if response and response.code == "response" %}<div class="flash success" role="status">Ваше самочувствие заметно улучшилось по сравнению с началом лечения. Так держать!</div>{% endif %}
 {% if unread %}<a class="task message-task" href="/me/chat/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="chat" %}</span><div><div class="t">Врач написал вам</div><div class="s">Непрочитанных сообщений: {{ unread }}</div></div>{% include "web/_icon.html" with name="chevron" %}</a>{% endif %}
 <section class="panel today-meds" aria-labelledby="meds-heading">
   <div class="section-heading"><h2 id="meds-heading">Лекарства на сегодня</h2><a class="text-action" href="/me/meds/">Дневник {% include "web/_icon.html" with name="chevron" %}</a></div>
@@ -28,14 +19,7 @@
 {% if due %}<section class="today-questionnaires" aria-labelledby="questionnaires-heading"><div class="section-heading"><h2 id="questionnaires-heading">Пора заполнить опросники</h2></div>
 {% for code, title in due %}<a class="task" href="/me/scale/{{ code }}/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">{{ title }}</div><div class="s">Раз в 2 недели · около 2 минут</div></div><span class="go">Пройти {% include "web/_icon.html" with name="chevron" %}</span></a>{% endfor %}
 </section>{% endif %}
-{% if short_due or auditc_due %}<section class="today-questionnaires" aria-labelledby="short-heading"><div class="section-heading"><h2 id="short-heading">Короткие вопросы</h2></div>
-{% if short_due %}<a class="task" href="/me/short/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">Короткая проверка</div><div class="s">Раз в неделю · 4 вопроса, около 30 секунд</div></div><span class="go">Пройти {% include "web/_icon.html" with name="chevron" %}</span></a>{% endif %}
-{% if auditc_due %}<a class="task" href="/me/scale/auditc/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">Вопросы об алкоголе</div><div class="s">Один раз · 3 вопроса, около минуты</div></div><span class="go">Пройти {% include "web/_icon.html" with name="chevron" %}</span></a>{% endif %}
-</section>{% endif %}
 <a class="task progress-task" href="/me/progress/"><span class="soft-icon mint">{% include "web/_icon.html" with name="activity" %}</span><div><div class="t">Ваша динамика</div><div class="s">Самочувствие и результаты опросников</div></div>{% include "web/_icon.html" with name="chevron" %}</a>
-{% if offer %}<section class="panel clinic-offer" aria-labelledby="offer-h"><span class="eyebrow">Может быть полезно</span><h2 id="offer-h">{{ offer.title }}</h2><p class="small">{{ offer.text }}</p>
-  <form method="post" action="/me/service/{{ offer.code }}/" class="offer-actions">{% csrf_token %}<button class="btn small">Оставить заявку</button><button class="text-button" name="hide" value="1">Не сейчас</button></form>
-  <p class="small muted">Решение о лечении вы принимаете вместе с врачом.</p></section>{% endif %}
-<a class="task" href="/me/learn/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">Полезно знать</div><div class="s">{% if on_aviandr %}Как принимать Авиандр, {% endif %}что помогает между приёмами</div></div>{% include "web/_icon.html" with name="chevron" %}</a>
-<footer class="patient-home-footer"><p>Ваши записи видит только лечащий врач.</p><form method="post" action="/logout/">{% csrf_token %}<button class="text-button">{% include "web/_icon.html" with name="logout" %}Выйти</button></form></footer>
+{% if extra_visit %}<div class="flash warning">У вас много вопросов на этой неделе. Возможно, удобнее обсудить их на дополнительном приёме — напишите врачу.</div>{% endif %}
+<footer class="patient-home-footer"><p>План лечения меняет врач.</p><form method="post" action="/logout/">{% csrf_token %}<button class="text-button">{% include "web/_icon.html" with name="logout" %}Выйти</button></form></footer>
 {% endblock %}
