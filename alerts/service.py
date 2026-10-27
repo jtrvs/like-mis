@@ -9,19 +9,17 @@
 Система ничего не назначает сама: doctor_actions — только подсказки, решения принимает врач.
 """
 from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import logging
-import hashlib
 
 import yaml
 from django.conf import settings
-from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from clinical.engine import rules
-from rules.models import RuleVersion
 
 from . import channels
 from . import facts as facts_mod
@@ -37,44 +35,13 @@ def cfg(key):
     return getattr(settings, "ALERTS", {}).get(key, DEFAULTS[key])
 
 
-def _get_rules_version_hash():
-    """Быстро получает 'отпечаток' активной версии правил из базы."""
-    active = RuleVersion.objects.filter(file_type='alerts', is_active=True).only('version', 'created_at').first()
-    if not active:
-        return None
-    return hashlib.md5(f"{active.version}-{active.created_at}".encode()).hexdigest()
-
-
+@lru_cache
 def load_rules():
-    """
-    Загружает правила алертов.
-    Кеширует результат, но проверяет, не изменилась ли версия в базе
-    (для alerts-worker, который работает в цикле).
-    """
-    current_hash = _get_rules_version_hash()
-    
-    # Пытаемся взять из кеша Django
-    cached = cache.get('alert_rules_cache')
-    if cached and cached.get('hash') == current_hash:
-        return cached['data']
-    
-    # Если хеш изменился или кеша нет — читаем заново
-    active = RuleVersion.objects.filter(file_type='alerts', is_active=True).first()
-    if active:
-        try:
-            data = yaml.safe_load(active.content)["rules"]
-        except Exception as e:
-            log.error("Ошибка чтения правил из базы, падаем в файл: %s", e)
-            data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
-    else:
-        data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
-
+    data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
     for r in data:
         errs = rules.validate(r["when"])
         if errs:
             raise ValueError(f"Правило {r['id']}: {errs}")
-            
-    cache.set('alert_rules_cache', {'hash': current_hash, 'data': data}, timeout=None)
     return data
 
 

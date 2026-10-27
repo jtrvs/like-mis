@@ -37,7 +37,6 @@ if _csrf_env:
 # Application definition
 
 INSTALLED_APPS = [
-    'web',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -50,7 +49,7 @@ INSTALLED_APPS = [
     'extraction',
     # интерфейсы (Стас, на основе прототипа): модели пациента/врача — черновик для Юли, экраны врача и пациента
     'core',
-    'rules',
+    'web',
 ]
 
 MIDDLEWARE = [
