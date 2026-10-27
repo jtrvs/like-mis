@@ -1,12 +1,14 @@
+{% comment %}Категории — по таблице правил: красный «ЭКСТРЕННО», оранжевый «СРОЧНО», жёлтый «ВНИМАНИЕ», фиолетовый «БЕЗОПАСНОСТЬ». Различаются не только цветом, но и значком и подписью.{% endcomment %}
 <div class="sig {{ a.severity }}" id="alert-{{ a.id }}">
-  <span class="tag">{% if a.severity == "critical" %}Срочно{% elif a.severity == "high" %}Важно{% else %}К сведению{% endif %}</span>
+  <span class="tag">{% if a.severity == "critical" %}! ЭКСТРЕННО{% elif a.severity == "high" %}▲ СРОЧНО{% elif a.severity == "safety" %}⛨ БЕЗОПАСНОСТЬ{% else %}● ВНИМАНИЕ{% endif %}</span>
   <div class="title">{{ a.title }}{% if show_patient %} — <a href="{{ a.card_url }}" style="color:inherit">{% firstof a.patient a.patient_label %}</a>{% endif %}</div>
-  <div class="meta">{{ a.created_at|date:"d.m H:i" }}{% if a.status == "escalated" %}, передан резервному врачу{% elif a.status == "new" %}, не доставлен{% endif %}{% if a.delivery_latency_ms is not None %}, доставлен за {{ a.delivery_latency_ms|floatformat:0 }} мс{% endif %}{% if a.rule_id == "suicide_risk_text" and a.facts.suicide_keyword_matches %}. Фразы: «{{ a.facts.suicide_keyword_matches|join:"», «" }}»{% endif %}</div>
+  <div class="meta">{{ a.created_at|date:"d.m H:i" }}{% if a.status == "escalated" %}, передан резервному врачу{% elif a.status == "new" %}, не доставлен{% endif %}{% if a.delivery_latency_ms is not None %}, доставлен за {{ a.delivery_latency_ms|floatformat:0 }} мс{% endif %}{% if a.rule_id == "suicide_risk_text" and a.facts.suicide_keyword_matches %}. Фразы: «{{ a.facts.suicide_keyword_matches|join:"», «" }}»{% endif %}{% if a.severity == "critical" %}. Подтвердите получение в течение 15 минут{% elif a.severity == "high" %}. Ответ — в течение суток{% endif %}</div>
   {% if a.status != "acknowledged" and a.status != "resolved" %}
   <form class="actions" method="post" action="/doctor/alerts/{{ a.id }}/ack/">{% csrf_token %}
     <input type="hidden" name="next" value="{{ request.path }}">
     <input type="text" name="resolution" placeholder="Что сделано (например, позвонил пациенту)" aria-label="Что сделано" style="flex:1 1 220px;min-height:32px;padding:4px 8px">
-    <button class="btn small">Отметить как просмотренный</button>
+    <label class="fp-check"><input type="checkbox" name="false_positive" value="1"> Ложное срабатывание</label>
+    <button class="btn small">{% if a.severity == "critical" %}Подтвердить получение{% else %}Отметить как просмотренный{% endif %}</button>
   </form>
   {% endif %}
 </div>

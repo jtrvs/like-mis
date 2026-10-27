@@ -20,8 +20,7 @@ def alerts_page(request):
     if not is_doctor(request.user):
         return HttpResponseForbidden("Только для врачей")
     qs = service.visible_to(request.user).order_by("status", "-created_at")[:100]
-    sev = {"critical": 0, "high": 1, "medium": 2}
-    items = sorted(qs, key=lambda a: (a.status not in a.OPEN, sev[a.severity], -a.created_at.timestamp()))
+    items = sorted(qs, key=lambda a: (a.status not in a.OPEN, a.SEVERITY_ORDER.get(a.severity, 9), -a.created_at.timestamp()))
     return render(request, "alerts/list.html", {"alerts": items})
 
 
@@ -52,7 +51,7 @@ def alert_ack(request, alert_id):
             return JsonResponse({"error": "некорректный JSON"}, status=400)
     else:
         resolution = request.POST.get("resolution", "")
-    service.acknowledge(a, request.user, str(resolution)[:2000])
+    service.acknowledge(a, request.user, str(resolution)[:2000], false_positive=bool(request.POST.get("false_positive")))
     if request.content_type == "application/json":
         return JsonResponse({"ok": True, "alert": a.as_dict()}, json_dumps_params={"ensure_ascii": False})
     return redirect("alerts_page")

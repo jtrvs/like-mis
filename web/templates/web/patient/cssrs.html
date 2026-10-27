@@ -1,0 +1,35 @@
+{% extends "web/patient/base.html" %}
+{% block title %}Ещё несколько вопросов — Лямбда{% endblock %}
+{% block heading %}Ещё несколько вопросов{% endblock %}
+{% block main %}
+<div class="form-intro"><span class="soft-icon lavender">{% include "web/_icon.html" with name="heart" %}</span><div><b>Спасибо за честный ответ.</b><p>Мы хотим лучше понять, как вы себя чувствуете. Ещё несколько коротких вопросов — ответьте «да» или «нет». Ответы увидит только ваш лечащий врач.</p></div></div>
+<section class="panel support-now" aria-labelledby="h-support-now">
+  <h2 id="h-support-now">Если тяжело прямо сейчас</h2>
+  <p class="small">Не оставайтесь с этим одни. Если вам угрожает опасность — звоните <a href="tel:112"><b>112</b></a>.</p>
+  {% for c in contacts %}<div class="hotline trusted-person"><div><b>{{ c.name }}</b><div class="small muted">{{ c.relation }}</div></div><a class="btn ghost small" href="tel:{{ c.phone }}">Позвонить</a></div>{% endfor %}
+  {% for name, phone, note in hotlines %}<div class="hotline"><div><b>{{ name }}</b><div class="small muted">{{ note }}</div></div><a href="tel:{{ phone|cut:' '|cut:'-' }}">{{ phone }}</a></div>{% endfor %}
+</section>
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" class="patient-form scale-form" id="cssrs-form">{% csrf_token %}
+  {% for i, label, selected in items %}
+  <fieldset class="q form-card" data-q="{{ i }}"{% if i == 2 or i == 3 or i == 4 %} data-if="1"{% elif i == 6 %} data-if="5"{% endif %}>
+    <legend><span class="question-number">{% if i == 6 %}6а{% else %}{{ forloop.counter }}{% endif %}</span> {{ label }}</legend>
+    {% if i == 2 or i == 3 or i == 4 %}<p class="field-hint">Отвечайте, если на вопрос 2 ответили «Да».</p>{% elif i == 6 %}<p class="field-hint">Отвечайте, если на вопрос 6 ответили «Да».</p>{% endif %}
+    <div class="opts" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="q{{ i }}" value="1" {% if selected == "1" %}checked{% endif %}> Да</label><label><input type="radio" name="q{{ i }}" value="0" {% if selected == "0" %}checked{% endif %}> Нет</label></div>
+  </fieldset>
+  {% endfor %}
+  <div class="form-submit"><button class="btn block">Отправить ответы</button><p class="small muted">Вопросы Колумбийской шкалы (C-SSRS). Они помогают врачу понять, какая поддержка нужна.</p></div>
+</form>
+<script>
+(() => {
+  const f = document.getElementById("cssrs-form");
+  const val = n => (f.querySelector(`input[name="q${n}"]:checked`) || {}).value;
+  const sync = () => f.querySelectorAll("[data-if]").forEach(fs => {
+    const show = val(fs.dataset.if) === "1";
+    fs.hidden = !show;
+    fs.querySelectorAll("input").forEach(i => { if (!show) i.checked = false; });
+  });
+  f.addEventListener("change", sync); sync();
+})();
+</script>
+{% endblock %}

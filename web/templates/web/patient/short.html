@@ -1,0 +1,19 @@
+{% extends "web/patient/base.html" %}
+{% load static %}
+{% block head %}<script src="{% static 'web/patient-forms.js' %}" defer></script>{% endblock %}
+{% block title %}Короткая проверка — Лямбда{% endblock %}
+{% block heading %}Короткая проверка{% endblock %}
+{% block main %}
+<a class="text-action back-link" href="/me/">← На сегодня</a>
+<div class="form-intro"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><b>4 вопроса раз в неделю — около 30 секунд</b><p>Как часто за {{ period|default:"последние 2 недели" }} вас беспокоило следующее? Здесь нет правильных и неправильных ответов. Ответы увидит только ваш лечащий врач.</p></div></div>
+{% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+<form method="post" class="patient-form scale-form" data-progress-form>{% csrf_token %}
+  <div class="form-progress"><span data-progress-text aria-live="polite">Отвечено: 0 из 4</span><progress value="0" max="4" aria-label="Количество ответов"></progress></div>
+  {% for code, i, label, opts, selected in items %}
+  <fieldset class="q form-card"><legend><span class="question-number">{{ forloop.counter }}</span> {{ label }}</legend>
+    <div class="opts">{% for v, l in opts %}<label><input type="radio" name="{{ code }}_q{{ i }}" value="{{ v }}" {% if selected == v|stringformat:"s" %}checked{% endif %} required> {{ l }}</label>{% endfor %}</div>
+  </fieldset>
+  {% endfor %}
+  <div class="form-submit"><button class="btn block">Отправить ответы</button></div>
+</form>
+{% endblock %}

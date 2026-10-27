@@ -48,9 +48,27 @@ class AviandrScenarios(SimpleTestCase):
 
 
 class RoutingTest(SimpleTestCase):
-    def test_suicide_mandatory(self):
-        s = routing.summary({"phq9_item9": 1, "phq9_total": 8})
-        self.assertEqual(s["urgency"], "mandatory")
+    def test_suicide_mandatory_until_cssrs(self):
+        # мысли о смерти без оценки по Колумбийской шкале — «обязательно»; дальше решает C-SSRS
+        self.assertEqual(routing.summary({"suicide_flag_unassessed": True, "phq9_total": 8})["urgency"], "mandatory")
+        self.assertEqual(routing.summary({"cssrs_risk": "high"})["urgency"], "emergency")
+        self.assertEqual(routing.summary({"cssrs_risk": "moderate"})["urgency"], "mandatory")
+        self.assertIsNone(routing.summary({"cssrs_risk": "low", "phq9_total": 8})["urgency"])
+
+    def test_alina_routing_table(self):
+        f = lambda **kw: [r["id"] for r in routing.route(kw)]  # noqa: E731
+        self.assertIn("severe_depression", f(phq9_total=20))
+        self.assertIn("substance_use", f(alcohol_days_7=3))
+        self.assertIn("no_response_8w", f(weeks_on_therapy=8, score_improvement_pct=10))
+        self.assertIn("partial_response_8w", f(weeks_on_therapy=9, score_improvement_pct=30))
+        self.assertIn("no_improvement_4w", f(weeks_on_therapy=4, score_improvement_pct=20))
+        self.assertEqual(f(weeks_on_therapy=8, score_improvement_pct=55), [])
+        # терапевту нужен диагноз психиатра; психиатру — нет
+        self.assertIn("diagnosis_needed", f(doctor_is_psychiatrist=False, has_f_diagnosis=False, gad7_total=12))
+        self.assertNotIn("diagnosis_needed", f(doctor_is_psychiatrist=True, has_f_diagnosis=False, gad7_total=12))
+        # умеренные симптомы — «желательно» только при сопутствующих проблемах
+        self.assertIn("moderate_with_problems", f(gad7_total=12, has_concomitant_problems=True))
+        self.assertEqual(f(gad7_total=12, has_concomitant_problems=False), [])
 
     def test_desirable(self):
         s = routing.summary({"phq9_total": 9, "gad7_total": 16})
@@ -115,3 +133,36 @@ class ReviewRegressions(SimpleTestCase):
         self.assertEqual(self.v(**base, weeks_on_drug=5), "yellow")
         codes = {f.code for f in safety.check("aviandr", {**self.full, **base, "weeks_on_drug": 7})}
         self.assertIn("course_exceeded", codes)
+
+
+class AlinaScalesTest(SimpleTestCase):
+    def test_auditc_threshold_by_sex(self):
+        from clinical.engine import scales
+        self.assertTrue(scales.auditc_risk(4, "M"))
+        self.assertFalse(scales.auditc_risk(3, "M"))
+        self.assertTrue(scales.auditc_risk(3, "F"))
+
+    def test_response_bands(self):
+        from clinical.engine import scales
+        self.assertEqual(scales.response(15, 6)["code"], "response")   # −60%
+        self.assertEqual(scales.response(15, 9)["code"], "partial")    # −40%
+        self.assertEqual(scales.response(15, 13)["code"], "none")      # −13%
+
+    def test_scenario_b_four_warnings(self):
+        # сценарий Б: СКФ 52, сертралин, трамадол, 68 лет — Авиандр противопоказан, 4 предупреждения
+        f = safety.check("aviandr", {"age": 68, "pregnant": False, "breastfeeding": False, "egfr": 52,
+                                     "icd10": ["F41.1"], "current_drugs": ["сертралин", "трамадол", "амлодипин"]})
+        self.assertEqual(safety.verdict(f), "red")
+        text = " ".join(x.text for x in f)
+        for part in ("СКФ < 60", "сертралин", "трамадол", "повышает концентрацию", "Пожилой возраст"):
+            self.assertIn(part, text)
+
+    def test_green_no_interaction_note(self):
+        f = safety.check("aviandr", {"age": 40, "pregnant": False, "breastfeeding": False, "egfr": 90,
+                                     "icd10": ["F41.1"], "current_drugs": ["метопролол"]})
+        self.assertEqual(safety.verdict(f), "green")
+        self.assertTrue(any(x.level == "ok" and "метопролол" in x.text for x in f))
+
+    def test_panic_offlabel_points_to_guideline(self):
+        f = safety.check("aviandr", {"age": 28, "pregnant": False, "breastfeeding": False, "egfr": 100, "icd10": ["F41.0"]})
+        self.assertTrue(any(x.level == "off_label" and "ID 456" in x.text for x in f))
