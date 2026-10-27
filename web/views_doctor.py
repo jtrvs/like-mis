@@ -9,9 +9,9 @@ from django.views.decorators.http import require_POST
 
 from alerts import service as alert_service
 from alerts.models import Alert
-from clinical.engine import loader, scales as scale_engine
-from core.models import (CareLink, CareTeamMember, DailyCheckin, Diagnosis, DoctorDecision, Message, PatientProfile,
-                         Prescription, Referral, ScaleResponse, ServiceRequest)
+from clinical.engine import loader
+from core.models import (CareLink, DailyCheckin, Diagnosis, DoctorDecision, Message, PatientProfile,
+                         Prescription, Referral, ScaleResponse)
 from extraction.engine.llm import extract as extract_text
 
 from . import services as S
@@ -61,7 +61,6 @@ def doctor_home(request):
             "phq": last_phq, "gad": last_gad, "last_seen": last_seen, "joined": bool(p.user_id), "code": link.invite_code,
             "alerts": Alert.objects.filter(patient_id=p.id, status__in=Alert.OPEN).count(),
             "has_observations": bool(last_seen or last_phq or last_gad),
-            "improving": _improving(p),
         })
     rows.sort(key=lambda r: (RISK_ORDER[r["risk"]], -r["alerts"], r["p"].last_name))
     summary = {"total": len(rows), "attention": sum(r["risk"] == "red" for r in rows)}
@@ -82,65 +81,16 @@ def doctor_home(request):
         rows = [r for r in rows if r["risk"] == "amber"]
     elif status_filter == "unjoined":
         rows = [r for r in rows if not r["joined"]]
-    alerts = _with_names(my_alerts(request).filter(status__in=Alert.OPEN).order_by("-created_at")[:50])
-    incoming = []
-    if request.doctor.is_psychiatrist:
-        # направления от врачей других специальностей, которые ещё никто из психиатров не принял
-        # только от врачей, к которым этот психиатр прикреплён как консультант/резервный (одна клиника)
-        incoming = list(Referral.objects.filter(status="confirmed", accepted_at__isnull=True,
-                                                patient__care_links__is_lead=True,
-                                                patient__care_links__doctor__backup_doctor=request.doctor)
-                        .exclude(patient__care_links__doctor=request.doctor).select_related("patient").order_by("urgency", "-created_at")[:10])
+    alerts = _with_names(my_alerts(request).filter(status__in=Alert.OPEN).order_by("-created_at")[:20])
     return render(request, "web/doctor/home.html", {
-        "rows": rows, "alerts": _grouped(alerts), "nav": "home", "incoming": incoming,
+        "rows": rows, "alerts": _sorted_alerts(alerts), "nav": "home",
         "summary": summary, "q": q, "status_filter": status_filter, **_nav(request),
     })
 
 
-def _improving(p):
-    """Положительная динамика — подсветить зелёным (отзыв психиатра: «чтоб врач порадовался»)."""
-    r = S.treatment_response(p)
-    if r and r["code"] == "response":
-        return True
-    for code in ("gad7", "phq9"):
-        last2 = list(ScaleResponse.objects.filter(patient=p, scale_code=code).order_by("-created_at").values_list("total", flat=True)[:2])
-        if len(last2) == 2 and last2[1] >= 5 and last2[0] <= last2[1] * 0.75:
-            return True
-    return False
-
-
-def _grouped(alerts):
-    """Несколько сработавших правил по одному пациенту — одна карточка с перечнем (таблица правил)."""
-    groups = {}
-    for a in _sorted_alerts(alerts):
-        g = groups.setdefault(a.patient_id, {"patient": getattr(a, "patient", None), "label": a.patient_label, "card_url": a.card_url,
-                                             "severity": a.severity, "alerts": [], "created_at": a.created_at})
-        g["alerts"].append(a)
-        g["created_at"] = max(g["created_at"], a.created_at)
-    return sorted(groups.values(), key=lambda g: (Alert.SEVERITY_ORDER.get(g["severity"], 9), -g["created_at"].timestamp()))
-
-
 def _sorted_alerts(qs):
-    return sorted(qs, key=lambda a: (Alert.SEVERITY_ORDER.get(a.severity, 9), -a.created_at.timestamp()))
-
-
-DOCTOR_SCALES = ("hama", "cgi_s", "cgi_i", "cssrs")
-CARD_SCALES = DOCTOR_SCALES + ("auditc",)
-
-
-def _assessments(p):
-    """Последние оценки врача (HAM-A, CGI) и Колумбийская шкала — для карточки."""
-    out = {}
-    for code in CARD_SCALES:
-        r = ScaleResponse.objects.filter(patient=p, scale_code=code).order_by("-created_at").first()
-        if r:
-            s = loader.scales()[code]
-            band = next((b for b in s["severity"] if b["from"] <= r.total <= b["to"]), None)
-            out[code] = {"r": r, "label": band["label"] if band else ""}
-    if "cssrs" in out:
-        from .alerts_bridge import _cssrs_label
-        out["cssrs"]["detail"] = _cssrs_label(out["cssrs"]["r"].answers, out["cssrs"]["r"].severity)
-    return out
+    sev = {"critical": 0, "high": 1, "medium": 2}
+    return sorted(qs, key=lambda a: (sev[a.severity], -a.created_at.timestamp()))
 
 
 @doctor_required
@@ -185,9 +135,9 @@ def patient_card(request, public_id):
                for r in scales if r.scale_code == code]
         for code in ("phq9", "gad7")
     }
-    # обе линии дневника направлены одинаково: 10 — хорошо (спокойствие = 10 − тревога)
-    chart["mood"] = [{"x": timezone.localtime(c.created_at).isoformat(), "y": c.mood} for c in checkins if c.mood is not None]
-    chart["calm"] = [{"x": timezone.localtime(c.created_at).isoformat(), "y": 10 - c.anxiety} for c in checkins if c.anxiety is not None]
+    for code in ("mood", "anxiety"):
+        chart[code] = [{"x": timezone.localtime(c.created_at).isoformat(), "y": getattr(c, code)}
+                       for c in checkins]
     ctx = {
         "p": p, "age": S.age(p), "link": link, "nav": "home",
         "via_escalation": link.doctor_id != request.doctor.id,
@@ -197,31 +147,16 @@ def patient_card(request, public_id):
         "rx_stopped": p.prescriptions.filter(status="stopped").order_by("-end_date")[:5],
         "adh": S.adherence(p),
         "alerts": _sorted_alerts(_with_names(alerts)),
-        "alert_group": (_grouped(_with_names(alerts.filter(id__in=my_alerts(request).values("id")))) or [None])[0],
         "referrals": p.referrals.filter(status="proposed").order_by("urgency"),
         "referral_done": p.referrals.filter(status="confirmed", created_at__gte=timezone.now() - timedelta(days=30)).order_by("-created_at").first(),
-        "routing": S.routing_panel(p, request.doctor),
+        "routing": S.routing_panel(p),
         "aviandr": S.aviandr_panel(p),
-        "assess": _assessments(p),
-        "response": S.treatment_response(p),
-        "hama_items": [(i, label) for i, label in enumerate(loader.scales()["hama"]["item_labels"])],
-        "cgi_s": list(enumerate(loader.scales()["cgi_s"]["answer_labels"], start=1)),
-        "cgi_i": list(enumerate(loader.scales()["cgi_i"]["answer_labels"], start=1)),
-        "cssrs_items": list(enumerate(loader.scales()["cssrs"]["item_labels"])),
-        "has_f_dx": p.diagnoses.filter(icd10__istartswith="F").exists(),
-        "summary": S.visit_summary(p),
-        "legal": S.LEGAL_HINTS,
-        "care_team": p.care_team.all(),
-        "service_requests": p.service_requests.order_by("-created_at")[:5],
-        "referral_feedback": p.referrals.filter(status="confirmed").order_by("-created_at").first(),
-        "referral_text": _referral_text(p, request.doctor),
-        "other_rx": p.prescriptions.filter(status="active").exclude(drug_code="aviandr"),
         "aviandr_drug": loader.drugs()["aviandr"],
         "is_psychiatrist": request.doctor.is_psychiatrist,
         "chart": chart,
         "latest_phq": next((r for r in reversed(scales) if r.scale_code == "phq9"), None),
         "latest_gad": next((r for r in reversed(scales) if r.scale_code == "gad7"), None),
-        "last_checkin": next((c for c in reversed(checkins) if c.kind == "full"), None),
+        "last_checkin": checkins[-1] if checkins else None,
         "thread": Message.objects.filter(care_link=link).order_by("-created_at")[:30][::-1],
         "extra_visit": S.needs_extra_visit(p),
         "contacts": p.trusted_contacts.filter(doctor_may_call=True),
@@ -229,8 +164,6 @@ def patient_card(request, public_id):
         "prescribe_form": PrescribeForm(initial={"start_date": date.today()}),
         "today": date.today(),
     }
-    levels = [r.urgency for r in ctx["referrals"]] + ([ctx["routing"]["urgency"]] if ctx["routing"]["urgency"] else [])
-    ctx["route_level"] = min(levels, key=lambda u: {"emergency": 0, "mandatory": 1, "desirable": 2}[u]) if levels else None
     ctx["render_ms"] = round((time.perf_counter() - t0) * 1000)
     ctx.update(_nav(request))
     return render(request, "web/doctor/patient.html", ctx)
@@ -319,144 +252,11 @@ def routing_confirm(request, public_id):
 @require_POST
 def alert_ack(request, alert_id):
     a = get_object_or_404(my_alerts(request), id=alert_id)
-    fp = bool(request.POST.get("false_positive"))
-    alert_service.acknowledge(a, request.user, request.POST.get("resolution", ""), false_positive=fp)
+    alert_service.acknowledge(a, request.user, request.POST.get("resolution", ""))
     DoctorDecision.objects.create(doctor=request.doctor, patient=PatientProfile.objects.get(id=a.patient_id), kind="alert_response",
-                                  payload={"alert": a.id, "rule": a.rule_id, "false_positive": fp}, rationale=request.POST.get("resolution", ""))
-    messages.success(request, "Отмечено как ложное срабатывание." if fp else "Сигнал отмечен как просмотренный.")
+                                  payload={"alert": a.id, "rule": a.rule_id}, rationale=request.POST.get("resolution", ""))
+    messages.success(request, "Сигнал отмечен как просмотренный.")
     return redirect(safe_next(request, "doctor_home"))
-
-
-def _referral_text(p, doctor):
-    """Готовый текст направления с краткой выпиской (опрос врачей: 12 из 13 — «нужно» или «было бы здорово»)."""
-    from datetime import date as _d
-    r = S.routing_panel(p, doctor)
-    if not r["urgency"]:
-        return ""
-    urg = {"emergency": "экстренно", "mandatory": "обязательно (в течение 1–7 дней)", "desirable": "планово"}[r["urgency"]]
-    lines = [f"Направление на консультацию врача-психиатра — {urg}.",
-             f"Пациент: {p.last_name} {p.first_name} {p.middle_name}, {p.birth_date:%d.%m.%Y} г. р. ({S.age(p)} лет)."]
-    sc = []
-    for code, t in (("phq9", "PHQ-9"), ("gad7", "GAD-7"), ("auditc", "AUDIT-C")):
-        x = ScaleResponse.objects.filter(patient=p, scale_code=code).order_by("-created_at").first()
-        if x:
-            extra = f" (вопрос 9 = {x.answers[8]})" if code == "phq9" and len(x.answers) == 9 and x.answers[8] else ""
-            sc.append(f"{t} = {x.total}{extra} от {x.created_at:%d.%m.%Y}")
-    c = ScaleResponse.objects.filter(patient=p, scale_code="cssrs").order_by("-created_at").first()
-    if c:
-        from .alerts_bridge import _cssrs_label
-        sc.append(f"C-SSRS (скрининг): {_cssrs_label(c.answers, c.severity)} от {c.created_at:%d.%m.%Y}")
-    if sc:
-        lines.append("Результаты опросников: " + "; ".join(sc) + ".")
-    lines.append("Основания: " + "; ".join(x["reason"] for x in r["reasons"]) + ".")
-    conds = [COND_LABELS.get(c.code, c.code) for c in p.conditions.all()]
-    if conds:
-        lines.append("Сопутствующие состояния: " + ", ".join(conds) + ".")
-    rx = [f"{x.drug_name} {x.dose_mg:g} мг × {x.times_per_day}" for x in p.prescriptions.filter(status="active")]
-    lines.append("Текущая терапия: " + (", ".join(rx) if rx else "нет") + ".")
-    lines.append("Источники: " + "; ".join(sorted({x["source"] for x in r["reasons"] if x.get("source")})) + ".")
-    lines.append(f"Врач: {doctor.user.get_full_name()}, {doctor.get_specialty_display().lower()}. Дата: {_d.today():%d.%m.%Y}.")
-    return "\n".join(lines)
-
-
-@doctor_required
-@require_POST
-def send_material(request, public_id):
-    """Отправить пациенту памятку «Зачем идти к психиатру и чего ждать» в чат."""
-    p = patient_for_doctor(request, public_id, "message")
-    link = _link(p, request.doctor)
-    Message.objects.create(care_link=link, sender=request.user,
-                           text="Я рекомендую консультацию специалиста, чтобы точнее подобрать помощь. "
-                                "Что важно знать перед приёмом — в разделе «Полезно знать»: /me/learn/specialist/")
-    messages.success(request, "Памятка отправлена пациенту в чат.")
-    return redirect(f"/doctor/patient/{p.public_id}/#h-route")
-
-
-@doctor_required
-@require_POST
-def accept_referral(request, ref_id):
-    """Психиатр принял направление: пациент дошёл, рекомендации — направившему врачу."""
-    ref = get_object_or_404(Referral, id=ref_id, status="confirmed", accepted_at__isnull=True,
-                            patient__care_links__is_lead=True, patient__care_links__doctor__backup_doctor=request.doctor)
-    if not request.doctor.is_psychiatrist:
-        return redirect("doctor_home")
-    ref.accepted_by, ref.accepted_at = request.doctor, timezone.now()
-    ref.recommendations = request.POST.get("recommendations", "").strip()[:2000]
-    ref.save(update_fields=["accepted_by", "accepted_at", "recommendations"])
-    CareLink.objects.get_or_create(doctor=request.doctor, patient=ref.patient,
-                                   defaults={"is_lead": False, "invite_code": S.new_invite_code()})
-    DoctorDecision.objects.create(doctor=request.doctor, patient=ref.patient, kind="accept_recommendation",
-                                  payload={"referral": ref.id, "accepted": True}, rationale=ref.recommendations)
-    audit(request, "referral_accepted", ref.patient)
-    messages.success(request, "Пациент принят. Направивший врач увидит ваши рекомендации в карточке.")
-    return redirect("doctor_home")
-
-
-@doctor_required
-@require_POST
-def care_team_add(request, public_id):
-    p = patient_for_doctor(request, public_id, "care_team")
-    name, spec = request.POST.get("name", "").strip(), request.POST.get("specialty", "").strip()
-    if name and spec:
-        CareTeamMember.objects.create(patient=p, name=name[:128], specialty=spec[:64], contact=request.POST.get("contact", "")[:128])
-        messages.success(request, "Врач добавлен в команду пациента.")
-    return redirect(f"/doctor/patient/{p.public_id}/#h-team")
-
-
-@doctor_required
-@require_POST
-def service_done(request, public_id, req_id):
-    p = patient_for_doctor(request, public_id, "service_request")
-    ServiceRequest.objects.filter(id=req_id, patient=p).update(status="done")
-    return redirect(f"/doctor/patient/{p.public_id}/#h-services")
-
-
-@doctor_required
-@require_POST
-def alerts_ack_patient(request, public_id):
-    """Одна отметка на карточку с перечнем сигналов пациента."""
-    p = patient_for_doctor(request, public_id, "alert_ack")
-    fp = bool(request.POST.get("false_positive"))
-    resolution = request.POST.get("resolution", "")
-    acked = []
-    for a in my_alerts(request).filter(patient_id=p.id, status__in=Alert.OPEN):
-        if alert_service.acknowledge(a, request.user, resolution, false_positive=fp):
-            acked.append(a)
-    if acked:
-        DoctorDecision.objects.create(doctor=request.doctor, patient=p, kind="alert_response",
-                                      payload={"alerts": [a.id for a in acked], "rules": [a.rule_id for a in acked], "false_positive": fp},
-                                      rationale=resolution)
-        messages.success(request, f"Отмечено сигналов: {len(acked)}." + (" Ложное срабатывание." if fp else ""))
-    return redirect(safe_next(request, "doctor_home"))
-
-
-@doctor_required
-@require_POST
-def doctor_scale(request, public_id, code):
-    """Оценка врача: HAM-A, CGI-S, CGI-I или Колумбийская шкала по итогам беседы (таблица «Шкалы»: недели 0, 4, 8)."""
-    p = patient_for_doctor(request, public_id, "assessment")
-    if code not in DOCTOR_SCALES:
-        return redirect("doctor_patient", public_id=p.public_id)
-    s = loader.scales()[code]
-    try:
-        if code == "cssrs":
-            raw = [request.POST.get(f"q{i}") for i in range(s["items"])]
-            answers = [1 if v == "1" else 0 for v in raw]
-            skip = scale_engine.skipped(s, answers)
-            answers = [0 if i in skip else a for i, a in enumerate(answers)]
-        else:
-            answers = [int(request.POST[f"q{i}"]) for i in range(s["items"])]
-        res = scale_engine.score(code, answers)
-    except (KeyError, ValueError):
-        messages.error(request, f"{s['title']}: заполните все пункты.")
-        return redirect(f"/doctor/patient/{p.public_id}/#h-assess")
-    ScaleResponse.objects.create(patient=p, scale_code=code, answers=answers, total=res.total, severity=res.severity, filled_by="doctor")
-    audit(request, "assessment_saved", p, scale=code)
-    if code == "cssrs":
-        from . import alerts_bridge
-        alerts_bridge.report(p, "cssrs")
-    messages.success(request, f"{s['title']}: {res.total if code != 'cssrs' else res.severity_label} — сохранено.")
-    return redirect(f"/doctor/patient/{p.public_id}/#h-assess")
 
 
 @doctor_required

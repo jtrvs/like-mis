@@ -4,8 +4,7 @@
   данные пациента сохранены
     -> report_event(...)        проверяем правила, создаём сигнал, сразу доставляем
     -> врач нажал «просмотрено»  acknowledge(...)
-    -> красный без отметки       process_pending(): через 15 мин повтор, дальше каждые 5 мин,
-                                 через 30 мин — резервному (дежурному) врачу, у него тот же цикл
+    -> нет отметки 15 минут      process_pending(): повтор, после 2 повторов — резервному врачу
 
 Система ничего не назначает сама: doctor_actions — только подсказки, решения принимает врач.
 """
@@ -29,86 +28,54 @@ from . import facts as facts_mod
 from .models import Alert, AlertDelivery
 
 RULES_PATH = Path(__file__).resolve().parent / "data" / "alert_rules.yaml"
-TRIGGERS = {"scale", "cssrs", "checkin", "message", "intake", "schedule", "report", "sos"}
+TRIGGERS = {"scale", "checkin", "message", "intake", "schedule"}
 log = logging.getLogger("alerts")
-DEFAULTS = {"ACK_TIMEOUT_MIN": 15, "REPEAT_EVERY_MIN": 5, "ESCALATE_AFTER_MIN": 30, "SUPPRESS_HOURS": 72,
-            "CHANNELS": ["inapp", "log"]}
+DEFAULTS = {"ACK_TIMEOUT_MIN": 15, "MAX_RETRIES": 2, "CHANNELS": ["inapp", "log"]}
 
 
 def cfg(key):
     return getattr(settings, "ALERTS", {}).get(key, DEFAULTS[key])
 
 
-def _checked(data):
-    """Проверка правил при загрузке: опечатка в YAML не должна молча отключить сигнал."""
+def _get_rules_version_hash():
+    """Быстро получает 'отпечаток' активной версии правил из базы."""
+    active = RuleVersion.objects.filter(file_type='alerts', is_active=True).only('version', 'created_at').first()
+    if not active:
+        return None
+    return hashlib.md5(f"{active.version}-{active.created_at}".encode()).hexdigest()
+
+
+def load_rules():
+    """
+    Загружает правила алертов.
+    Кеширует результат, но проверяет, не изменилась ли версия в базе
+    (для alerts-worker, который работает в цикле).
+    """
+    current_hash = _get_rules_version_hash()
+    
+    # Пытаемся взять из кеша Django
+    cached = cache.get('alert_rules_cache')
+    if cached and cached.get('hash') == current_hash:
+        return cached['data']
+    
+    # Если хеш изменился или кеша нет — читаем заново
+    active = RuleVersion.objects.filter(file_type='alerts', is_active=True).first()
+    if active:
+        try:
+            data = yaml.safe_load(active.content)["rules"]
+        except Exception as e:
+            log.error("Ошибка чтения правил из базы, падаем в файл: %s", e)
+            data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
+    else:
+        data = yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"]
+
     for r in data:
         errs = rules.validate(r["when"])
-        if r.get("severity") not in SEVERITIES:
-            errs.append(f"категория {r.get('severity')!r}")
         if errs:
             raise ValueError(f"Правило {r['id']}: {errs}")
             
     cache.set('alert_rules_cache', {'hash': current_hash, 'data': data}, timeout=None)
     return data
-
-
-def load_rules():
-    """
-    Правила сигналов: активная версия из админки («Версии правил») или файл alert_rules.yaml.
-    Каждый процесс (web, alerts-worker) сам замечает новую активную версию. Если версия в базе
-    оказалась некорректной, работаем по файлу из репозитория и пишем ошибку в журнал — сигналы не отключаются.
-    """
-    from clinical.engine import loader
-    try:
-        return _checked(loader.versioned("alerts")["rules"])
-    except Exception as e:  # noqa: BLE001
-        if loader.active_version("alerts") is None:
-            raise
-        log.error("Активная версия правил сигналов некорректна, работаю по файлу из репозитория: %s", e)
-        return _checked(yaml.safe_load(RULES_PATH.read_text(encoding="utf-8"))["rules"])
-
-
-def _clear():
-    from clinical.engine import loader
-    loader.reload()
-
-
-load_rules.cache_clear = _clear  # совместимость с тестами и админкой
-
-
-SEVERITIES = {code for code, _ in Alert.SEVERITY}
-
-
-class _Facts(dict):
-    def __missing__(self, key):
-        return "—"
-
-
-def render_title(template, facts):
-    """Подставляет факты в текст сигнала: «PHQ-9, вопрос 9 = {phq9_item9}» → «… = 2»."""
-    try:
-        return template.format_map(_Facts({k: ("—" if v is None else v) for k, v in facts.items()}))[:255]
-    except (ValueError, IndexError):
-        return template[:255]
-
-
-def _suppressed(patient_id, rule, f, now):
-    """
-    Антиспам: некрасный сигнал по тому же правилу не повторяется 72 ч после отметки врача, если не стало хуже.
-    Красные (critical) не подавляются никогда.
-    """
-    if rule["severity"] == "critical" or rule.get("never_suppress"):
-        return False
-    since = now - timedelta(hours=cfg("SUPPRESS_HOURS"))
-    last = (Alert.objects.filter(patient_id=patient_id, rule_id=rule["id"], acknowledged_at__gte=since)
-            .order_by("-acknowledged_at").first())
-    if last is None:
-        return False
-    for key in rule.get("worse_if_greater", []):
-        new, old = f.get(key), last.facts.get(key)
-        if isinstance(new, (int, float)) and isinstance(old, (int, float)) and new > old:
-            return False
-    return True
 
 
 def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text="", backup_doctor=None,
@@ -144,13 +111,11 @@ def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text
         # снова поднимает сигнал. Защита от гонки — частичный уникальный индекс в базе (см. models.Alert.Meta).
         if Alert.objects.filter(patient_id=patient_id, rule_id=r["id"], status__in=Alert.OPEN).exists():
             continue
-        if _suppressed(patient_id, r, f, received_at):
-            continue
         try:
             with transaction.atomic():
                 a = Alert.objects.create(
                     patient_id=patient_id, patient_label=patient_label, card_url=card_url, doctor=doctor, backup_doctor=backup_doctor,
-                    rule_id=r["id"], severity=r["severity"], title=render_title(r["title"], f), facts=_jsonable(f),
+                    rule_id=r["id"], severity=r["severity"], title=r["title"], facts=_jsonable(f),
                     patient_actions=r.get("patient_actions", []), doctor_actions=r.get("doctor_actions", []),
                     source_received_at=received_at,
                 )
@@ -162,7 +127,6 @@ def report_event(*, patient_id, patient_label, doctor, trigger, facts=None, text
     return {
         "alerts": created,
         "show_crisis_screen": facts_mod.needs_crisis_screen(text) or "show_hotlines" in pa,
-        "open_cssrs": "open_cssrs" in pa or facts_mod.needs_crisis_screen(text),
         "patient_actions": pa,
         "doctor_actions": sorted({x for a in created for x in a.doctor_actions}),
     }
@@ -201,53 +165,42 @@ def visible_to(user):
     return Alert.objects.filter(Q(doctor=user) | Q(escalated_to=user))
 
 
-def acknowledge(alert, user, resolution="", false_positive=False):
-    """
-    Отметка врача. Уже просмотренный сигнал повторно не перезаписывается (сохраняем, кто и когда отреагировал).
-    false_positive — врач отметил «ложное срабатывание» (для разбора правил).
-    """
+def acknowledge(alert, user, resolution=""):
+    """Отметка врача. Уже просмотренный сигнал повторно не перезаписывается (сохраняем, кто и когда отреагировал)."""
     now = timezone.now()
     n = Alert.objects.filter(id=alert.id, status__in=Alert.OPEN).update(
-        status="acknowledged", acknowledged_at=now, acknowledged_by=user, resolution=resolution,
-        false_positive=bool(false_positive))
+        status="acknowledged", acknowledged_at=now, acknowledged_by=user, resolution=resolution)
     alert.refresh_from_db()
     return bool(n)
 
 
 def process_pending(now=None):
-    """
-    Раз в минуту (фоновый процесс alerts-worker). Повторы и эскалация — только для красных (ЭКСТРЕННО):
-    нет отметки 15 минут — повтор, дальше каждые 5 минут; через 30 минут — резервному (дежурному) врачу,
-    у него тот же цикл; если не ответил и он — громко в журнал.
-    Оранжевые («СРОЧНО», ответ в течение суток) и жёлтые не повторяются.
-    """
+    """Раз в минуту (фоновый процесс alerts-worker): повтор и эскалация неподтверждённых срочных/важных сигналов."""
     now = now or timezone.now()
-    first = timedelta(minutes=cfg("ACK_TIMEOUT_MIN"))
-    every = timedelta(minutes=cfg("REPEAT_EVERY_MIN"))
-    escalate_after = timedelta(minutes=cfg("ESCALATE_AFTER_MIN"))
-    stats = {"redelivered": 0, "retried": 0, "escalated": 0, "unanswered": 0}
+    timeout = timedelta(minutes=cfg("ACK_TIMEOUT_MIN"))
+    stats = {"redelivered": 0, "retried": 0, "escalated": 0}
     for a in Alert.objects.filter(status="new"):  # например, все каналы были недоступны
         stats["redelivered"] += dispatch(a)
-    for a in Alert.objects.filter(status__in=["delivered", "escalated"], severity="critical", exhausted_at__isnull=True):
+    stats["unanswered"] = 0
+    for a in Alert.objects.filter(status__in=["delivered", "escalated"], severity__in=["critical", "high"], exhausted_at__isnull=True):
+        last = a.deliveries.order_by("-sent_at").first()
+        if last and now - last.sent_at < timeout:
+            continue
         open_now = Alert.objects.filter(id=a.id, status__in=["delivered", "escalated"])  # врач мог отметить секунду назад
-        started = a.escalated_at if a.escalated_to_id else (a.delivered_at or a.created_at)
-        if now - started >= escalate_after:
-            if a.escalated_to_id is None and a.backup_doctor_id:
-                # передаём резервному врачу и даём ему тот же цикл повторов
-                if open_now.update(escalated_to=a.backup_doctor_id, escalated_at=now, status="escalated", retries=0):
-                    a.refresh_from_db()
-                    dispatch(a, a.escalated_to)
-                    stats["escalated"] += 1
-            elif open_now.update(exhausted_at=now):
-                # ни ведущий, ни резервный не ответили (или резервного нет) — громко в журнал, один раз
+        if a.retries < cfg("MAX_RETRIES"):
+            if open_now.update(retries=a.retries + 1):
+                a.refresh_from_db()
+                dispatch(a, a.escalated_to or a.doctor)
+                stats["retried"] += 1
+        elif a.escalated_to_id is None and a.backup_doctor_id:
+            # передаём резервному врачу и даём ему тот же цикл повторов
+            if open_now.update(escalated_to=a.backup_doctor_id, status="escalated", retries=0):
+                a.refresh_from_db()
+                dispatch(a, a.escalated_to)
+                stats["escalated"] += 1
+        else:
+            # ни ведущий, ни резервный не ответили (или резервного нет) — громко в журнал, один раз
+            if open_now.update(exhausted_at=now):
                 log.critical("СИГНАЛ БЕЗ ОТВЕТА: alert %s, пациент %s, правило %s", a.id, a.patient_label, a.rule_id)
                 stats["unanswered"] += 1
-            continue
-        # повтор №k — через 15 мин + 5 мин × (k − 1) от начала цикла (у ведущего — от доставки, у резервного — от передачи)
-        if now - started < first + every * a.retries:
-            continue
-        if open_now.update(retries=a.retries + 1):
-            a.refresh_from_db()
-            dispatch(a, a.escalated_to or a.doctor)
-            stats["retried"] += 1
     return stats

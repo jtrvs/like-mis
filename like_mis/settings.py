@@ -76,7 +76,6 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'web.context.patient_side',
             ],
         },
     },
@@ -152,11 +151,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # Сигналы о критических состояниях (приложение alerts)
 ALERTS = {
-    # красный сигнал: нет отметки 15 мин — повтор, дальше каждые 5 мин, через 30 мин — резервному врачу
-    'ACK_TIMEOUT_MIN': int(os.environ.get('ALERT_ACK_TIMEOUT_MIN', 15)),
-    'REPEAT_EVERY_MIN': int(os.environ.get('ALERT_REPEAT_EVERY_MIN', 5)),
-    'ESCALATE_AFTER_MIN': int(os.environ.get('ALERT_ESCALATE_AFTER_MIN', 30)),
-    'SUPPRESS_HOURS': int(os.environ.get('ALERT_SUPPRESS_HOURS', 72)),   # антиспам для некрасных сигналов
+    'ACK_TIMEOUT_MIN': int(os.environ.get('ALERT_ACK_TIMEOUT_MIN', 15)),  # нет отметки врача — повтор
+    'MAX_RETRIES': int(os.environ.get('ALERT_MAX_RETRIES', 2)),           # потом — резервному врачу
     'CHANNELS': os.environ.get('ALERT_CHANNELS', 'inapp,log').split(','),  # inapp, log, email, telegram
     # раз в час: пациенты, которые перестали отмечать таблетки (правило diary_abandoned)
     'SCHEDULE_HOOK': 'web.alerts_bridge.silent_patients',

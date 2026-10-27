@@ -1,8 +1,0 @@
-{% extends "web/patient/base.html" %}
-{% block title %}Полезно знать — Лямбда{% endblock %}
-{% block heading %}Полезно знать{% endblock %}
-{% block main %}
-<a class="text-action back-link" href="/me/">← На сегодня</a>
-<p class="page-description">Короткие и понятные материалы о лечении. Их подготовили вместе с врачами по официальным источникам.</p>
-{% for slug, page in pages %}<a class="task" href="/me/learn/{{ slug }}/"><span class="soft-icon lavender">{% include "web/_icon.html" with name="note" %}</span><div><div class="t">{{ page.title }}</div><div class="s">{{ page.lead }}</div></div>{% include "web/_icon.html" with name="chevron" %}</a>{% endfor %}
-{% endblock %}

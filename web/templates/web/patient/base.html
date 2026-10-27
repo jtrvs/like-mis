@@ -1,14 +1,9 @@
 {% extends "web/base.html" %}
 {% block body %}
-<div class="pt-shell"><div class="pt">
-  <header class="pt-top"><a class="brand-lockup" href="/me/" aria-label="Лямбда — главная"><span class="brand-symbol">{% include "web/_icon.html" with name="lambda" %}</span><span><strong>Лямбда</strong><small>Личный кабинет</small></span></a><a class="sos" href="/me/help/?sos=1">{% include "web/_icon.html" with name="help" %}Мне плохо</a></header>
+<div class="pt">
+  <header class="pt-top"><a class="brand-lockup" href="/me/" aria-label="Лямбда — главная"><span class="brand-symbol">{% include "web/_icon.html" with name="compass" %}</span><span><strong>Лямбда</strong><small>Личный кабинет</small></span></a><a class="sos" href="/me/help/">{% include "web/_icon.html" with name="help" %}Мне плохо</a></header>
   <main id="main-content"><div class="pt-welcome"><h1>{% block heading %}{% endblock %}</h1></div>{% include "web/_flash.html" %}{% block main %}{% endblock %}</main>
 </div>
-<aside class="pt-aside" aria-label="Поддержка">
-  <div class="panel warm-card"><h3>{{ side_phrase }}</h3><p>Записывайте столько, сколько есть сил. Даже одна отметка помогает врачу.</p></div>
-  {% if side_doctor %}<div class="panel"><h3>Ваш врач</h3><p>{{ side_doctor }}</p><p>Видит ваши записи и отметки. Больше их не видит никто.</p><a class="text-action" href="/me/chat/">Написать врачу</a></div>{% endif %}
-  <div class="panel"><h3>Если тяжело прямо сейчас</h3><p>Телефон доверия — бесплатно, круглосуточно:</p><p><a href="tel:88001004994"><b>8 800 100-49-94</b></a></p><a class="text-action" href="/me/help/">Все линии помощи</a></div>
-</aside></div>
 <nav class="tabs" aria-label="Разделы пациента">
   <a href="/me/" {% if tab == "home" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="calendar" %}<span>Сегодня</span></a>
   <a href="/me/meds/" {% if tab == "meds" %}aria-current="page"{% endif %}>{% include "web/_icon.html" with name="pill" %}<span>Лекарства</span></a>

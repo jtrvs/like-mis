@@ -28,10 +28,6 @@
   --amber: #86530B;
   --amber-line: #D1A04D;
   --amber-wash: #FFF7E7;
-  --orange: #B4440E;
-  --orange-wash: #FFF1E7;
-  --violet: #6B3FA0;
-  --violet-wash: #F4EEFB;
   --green: #346D4F;
   --green-wash: #EAF4ED;
   --focus: #705681;
@@ -65,7 +61,7 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 .brand-lockup strong { display: block; font-size: 23px; line-height: 1.2; font-weight: 600; letter-spacing: -.04em; }
 .brand-lockup small { display: block; color: var(--ink-2); font-size: 11px; margin-top: 3px; }
 .brand-symbol { display: grid; place-items: center; width: 43px; height: 43px; flex-shrink: 0; border-radius: 13px; color: var(--brand); background: var(--lavender); }
-.brand-symbol .icon { width: 30px; height: 30px; stroke-width: 2; }
+.brand-symbol .icon { width: 30px; height: 30px; stroke-width: 1.3; }
 .soft-icon { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 13px; flex: 0 0 auto; }
 .soft-icon.lavender { color: var(--brand); background: var(--lavender); }
 .soft-icon.mint { color: var(--teal); background: var(--mint); }
@@ -216,9 +212,7 @@ table.list a.name:hover { color: var(--brand); text-decoration: underline; }
 .rail-heading p { font-size: 11px; color: var(--ink-2); margin: 3px 0 0; }
 .alert-summary { border: 1px solid var(--line); border-left: 3px solid var(--line); padding: 13px 14px; background: var(--surface); border-radius: 10px; margin-bottom: 12px; }
 .alert-summary.critical { border-color: #EBCDC9; border-left-color: var(--red); background: #FFFCFB; }
-.alert-summary.high { border-color: #F0CDB6; border-left-color: var(--orange); }
-.alert-summary.medium { border-left-color: var(--amber-line); }
-.alert-summary.safety { border-left-color: var(--violet); }
+.alert-summary.high { border-color: #EADABC; border-left-color: var(--amber-line); }
 .alert-summary-top { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 10px; }
 .severity-label { display: inline-flex; gap: 4px; align-items: center; color: var(--ink-2); font-size: 10px; font-weight: 600; }
 .severity-label .icon { width: 13px; height: 13px; }
@@ -253,25 +247,18 @@ details.more summary { cursor: pointer; color: var(--brand); margin: 8px 0; }
 .sig .tag { grid-row: span 2; align-self: start; font-weight: 700; font-size: 12px; padding: 3px 8px; border-radius: 4px; white-space: nowrap; }
 .sig .title { font-weight: 600; overflow-wrap: anywhere; }
 .sig .meta { font-size: 13px; color: var(--ink-2); overflow-wrap: anywhere; }
-/* Категории (таблица правил): красный «ЭКСТРЕННО», оранжевый «СРОЧНО», жёлтый «ВНИМАНИЕ», фиолетовый «БЕЗОПАСНОСТЬ».
-   Различаются цветом, значком и подписью — так их различают и люди с нарушением цветовосприятия. */
-.sig.emergency, .sig.mandatory, .sig.critical, .sig.contraindication { background: var(--red); color: #fff; }
-.sig.emergency .meta, .sig.mandatory .meta, .sig.critical .meta, .sig.contraindication .meta { color: #FFF0EE; }
-.sig.emergency .tag, .sig.mandatory .tag, .sig.critical .tag, .sig.contraindication .tag { background: #fff; color: var(--red); }
-.sig.high { background: var(--orange-wash); border: 2px solid var(--orange); }
-.sig.high .tag { color: #fff; background: var(--orange); }
-.sig.desirable, .sig.medium, .sig.caution, .sig.off_label { background: var(--amber-wash); border: 2px dashed var(--amber-line); }
-.sig.desirable .tag, .sig.medium .tag, .sig.caution .tag, .sig.off_label .tag { color: var(--amber); border: 1px solid var(--amber-line); background: var(--surface); }
-.sig.safety { background: var(--violet-wash); border: 2px solid var(--violet); }
-.sig.safety .tag { color: #fff; background: var(--violet); }
-.sig.info { background: var(--wash); }
-.sig.info .tag { color: var(--ink-2); border: 1px solid var(--line); background: var(--surface); }
-.sig .fp-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; margin: 0; }
+.sig.mandatory, .sig.critical, .sig.contraindication { background: var(--red); color: #fff; }
+.sig.mandatory .meta, .sig.critical .meta, .sig.contraindication .meta { color: #FFF0EE; }
+.sig.mandatory .tag, .sig.critical .tag, .sig.contraindication .tag { background: #fff; color: var(--red); }
+.sig.desirable, .sig.high, .sig.caution, .sig.off_label { background: var(--amber-wash); border: 2px dashed var(--amber-line); }
+.sig.desirable .tag, .sig.high .tag, .sig.caution .tag, .sig.off_label .tag { color: var(--amber); border: 1px solid var(--amber-line); }
+.sig.medium, .sig.info { background: var(--wash); }
+.sig.medium .tag, .sig.info .tag { color: var(--ink-2); border: 1px solid var(--line); background: var(--surface); }
 .sig.ok { background: var(--green-wash); }
 .sig.ok .tag { color: var(--green); border: 1px solid var(--green); }
 .sig .actions { grid-column: 2; display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; min-width: 0; }
-.sig.critical .btn, .sig.mandatory .btn, .sig.emergency .btn { background: #fff; color: var(--red); border-color: #fff; }
-.sig.critical .btn.ghost, .sig.mandatory .btn.ghost, .sig.emergency .btn.ghost { background: transparent; color: #fff; }
+.sig.critical .btn, .sig.mandatory .btn { background: #fff; color: var(--red); border-color: #fff; }
+.sig.critical .btn.ghost, .sig.mandatory .btn.ghost { background: transparent; color: #fff; }
 .sig ul li + li { margin-top: 4px; }
 .light { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
 .light::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
@@ -285,10 +272,6 @@ details.more summary { cursor: pointer; color: var(--brand); margin: 8px 0; }
 .flash { padding: 12px 14px; border-radius: 9px; margin-bottom: 16px; background: var(--green-wash); border-left: 4px solid var(--green); }
 .flash.error { background: var(--red-wash); border-color: var(--red); }
 .flash.warning { background: var(--amber-wash); border-color: var(--amber-line); }
-.flash.info { background: var(--lavender); border-color: var(--brand); }
-[hidden] { display: none !important; }
-.support-now { margin-bottom: 16px; }
-.support-now h2 { margin-top: 0; }
 
 /* Кабинет пациента */
 .pt { max-width: 600px; margin: 0 auto; min-height: 100vh; padding: 24px 22px 108px; }
@@ -323,9 +306,7 @@ details.more summary { cursor: pointer; color: var(--brand); margin: 8px 0; }
 .dose .small { font-size: 11px; }
 .dose .state-yes, .dose .state-no { display: inline-flex; align-items: center; justify-content: center; padding: 6px 9px; border-radius: 6px; font-size: 11px; font-weight: 500; white-space: nowrap; }
 .dose .state-yes { color: var(--green); background: var(--green-wash); }
-.dose .state-no { color: var(--ink-2); background: var(--wash); }
-.dose .state-yes .icon, .dose .btn .icon { width: 14px; height: 14px; }
-.dose-actions { display: flex; gap: 6px; }
+.dose .state-no { color: var(--red); background: var(--red-wash); }
 .dose form { flex-shrink: 0; }
 .dose .btn.small { font-size: 11px; padding-inline: 9px; }
 .adherence-note { display: flex; gap: 7px; align-items: flex-start; padding-top: 14px; margin: 2px 0 0; border-top: 1px solid var(--line); color: var(--ink-2); font-size: 11px; }
@@ -636,61 +617,3 @@ details.more summary { cursor: pointer; color: var(--brand); margin: 8px 0; }
 .import-date-fields input { max-width: 240px; }
 .import-date-fields .errorlist { padding-left: 20px; color: var(--red); font-size: 13px; }
 .import-medication { border-bottom: 1px dashed var(--line); margin-bottom: 12px; }
-
-/* Оценка врача: HAM-A, CGI, C-SSRS */
-.assess-form { margin-top: 8px; }
-.assess-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: center; }
-.assess-opts { display: inline-flex; gap: 10px; flex: 0 0 auto; }
-.assess-opts label { display: inline-flex; gap: 3px; align-items: center; margin: 0; }
-@media (max-width: 640px) { .assess-row { flex-direction: column; align-items: flex-start; } }
-
-/* ---- Ночные доработки: пациент ---- */
-.worse-form { margin: 14px 0 18px; }
-.worse-button { width: 100%; display: flex; align-items: center; gap: 12px; text-align: left; padding: 14px 16px; border: 1px solid #E8D7DD; border-radius: 14px; background: #FFF8F9; color: var(--ink); cursor: pointer; font: inherit; }
-.worse-button:hover { background: #FFF0F3; }
-.worse-button b { display: block; font-size: 15px; }
-.worse-button small { display: block; color: var(--ink-2); font-size: 12px; }
-.one-question h2 { font-size: 17px; margin: 0 0 4px; }
-.one-scale { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; margin-top: 10px; }
-.one-btn { min-height: 44px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; }
-.one-btn:hover { background: var(--lavender); border-color: var(--brand); }
-.clinic-offer { border: 1px solid #DCCFE6; background: linear-gradient(180deg, #FBF8FD, #fff); }
-.clinic-offer h2 { font-size: 17px; margin: 4px 0 6px; }
-.offer-actions { display: flex; gap: 12px; align-items: center; margin: 8px 0; }
-.learn-section ul { margin: 0; padding-left: 18px; }
-.learn-section li + li { margin-top: 6px; }
-.learn-section h2 { font-size: 17px; margin-top: 0; }
-.warm-card { background: #FBF8FD; }
-.private-note summary { cursor: pointer; font-weight: 600; display: flex; gap: 8px; align-items: center; }
-.private-note summary .icon { width: 16px; height: 16px; }
-.private-note textarea { margin-top: 10px; }
-.alcohol-details { margin-top: 10px; }
-.scale-good input:checked + label { background: var(--brand); color: #fff; }
-.pw-wrap { position: relative; display: block; }
-.pw-toggle { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); border: 0; background: transparent; color: var(--brand); font: inherit; font-size: 13px; cursor: pointer; padding: 6px; }
-/* широкий экран: вместо пустоты по бокам — спокойная колонка поддержки */
-.pt-aside { display: none; }
-@media (min-width: 1100px) {
-  body:has(.pt) { background: radial-gradient(1200px 600px at 85% 0%, #F3EEF8 0%, var(--paper) 60%); }
-  .pt-shell { display: grid; grid-template-columns: minmax(0, 620px) 320px; gap: 40px; justify-content: center; max-width: 1040px; margin: 0 auto; }
-  .pt-shell .pt { margin: 0; max-width: none; }
-  .pt-aside { display: block; position: sticky; top: 24px; align-self: start; padding-top: 92px; }
-  .pt-aside .panel { margin-bottom: 14px; }
-  .pt-aside h3 { font-size: 15px; margin: 0 0 6px; }
-  .pt-aside p { font-size: 13px; color: var(--ink-2); margin: 0 0 6px; }
-}
-
-/* ---- Ночные доработки: врач ---- */
-.visit-summary { border-left: 4px solid var(--brand); }
-.summary-list { margin: 0; padding-left: 18px; columns: 2; column-gap: 32px; font-size: 14px; }
-.summary-list li { break-inside: avoid; margin-bottom: 4px; }
-@media (max-width: 800px) { .summary-list { columns: 1; } }
-.referral-text textarea { width: 100%; font-size: 13px; line-height: 1.5; margin-top: 8px; }
-.legal-hint summary { font-weight: 600; font-size: 14px; }
-.incoming-referrals { margin-bottom: 20px; }
-.row-improving td:first-child { box-shadow: inset 4px 0 0 var(--green); }
-.status-badge.improving .icon { width: 14px; height: 14px; }
-.sig.info .title { color: var(--ink); }
-.therapist-fold > summary { cursor: pointer; padding: 4px 0; }
-.therapist-fold[open] > summary { margin-bottom: 12px; }
-.therapist-fold > .panel { box-shadow: none; border: 0; padding: 0; margin: 0; }

@@ -6,8 +6,6 @@
 <meta name="theme-color" content="#705681">
 <title>{% block title %}Лямбда{% endblock %}</title>
 <link rel="manifest" href="/manifest.webmanifest">
-<link rel="icon" href="{% static 'web/icon.svg' %}" type="image/svg+xml">
-<link rel="apple-touch-icon" href="{% static 'web/icon-192.png' %}">
 <link rel="stylesheet" href="{% static 'web/app.css' %}">
 <script src="{% static 'web/vendor/htmx.min.js' %}" defer></script>
 {% block head %}{% endblock %}
@@ -15,14 +13,5 @@
 <body hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
 <a class="skip-link" href="#main-content">К содержимому</a>
 {% block body %}{% endblock %}
-<script>
-document.querySelectorAll('input[type=password]').forEach(i => {
-  const w = document.createElement('span'); w.className = 'pw-wrap'; i.parentNode.insertBefore(w, i); w.appendChild(i);
-  const b = document.createElement('button'); b.type = 'button'; b.className = 'pw-toggle'; b.textContent = 'Показать';
-  b.setAttribute('aria-label', 'Показать пароль');
-  b.onclick = () => { const s = i.type === 'password'; i.type = s ? 'text' : 'password'; b.textContent = s ? 'Скрыть' : 'Показать'; };
-  w.appendChild(b);
-});
-</script>
 </body>
 </html>

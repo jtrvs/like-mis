@@ -1,113 +1,58 @@
-# Маршрутизация к психиатру — по «Таблице правил» клинического психолога команды, раздел 3.
-# urgency: emergency («обязательно, экстренно») | mandatory («обязательно») | desirable («желательно»)
-# Для психиатра блок называется «рекомендации по ведению», для врача другой специальности — «направление к психиатру».
-# Пороги с пометкой «выбор команды» выбраны командой на основе источников.
+# Маршрутизация к психиатру для врачей непсихиатрических специальностей (задача 8 кейса).
+# ЧЕРНОВИК: пороги и формулировки утверждает Алина, источники уточняются.
+# urgency: mandatory («обязательно») | desirable («желательно»)
 rules:
-  # --- Обязательно, экстренно: сразу, 103 / экстренная психиатрическая помощь ---
-  - id: cssrs_high
-    urgency: emergency
-    when: {fact: cssrs_risk, op: eq, value: high}
-    reason: "Высокий суицидальный риск по C-SSRS: намерение или план, либо попытка / подготовка за последние 3 месяца"
-    action: Сразу — 103 / экстренная психиатрическая помощь
-    source: Колумбийская шкала (C-SSRS); Закон РФ № 3185-1 «О психиатрической помощи»
-
-  - id: overdose
-    urgency: emergency
-    when: {fact: overdose_recent, op: is_true}
-    reason: Пациент сообщил о приёме лишних таблеток (3 и больше сразу или плохое самочувствие)
-    action: Сразу — 103; пациенту показано, что взять с собой упаковку
-    source: Инструкция Авиандра, раздел «Передозировка»
-
-  # --- Обязательно: 1–7 дней, срок выбирает врач ---
-  - id: suicidal_unassessed
+  - id: suicidal_ideation
     urgency: mandatory
-    when: {fact: suicide_flag_unassessed, op: is_true}
-    reason: Мысли о смерти или самоповреждении (PHQ-9, вопрос 9, или высказывания пациента), Колумбийская шкала ещё не заполнена
-    action: Оценить суицидальный риск
-    source: PHQ-9 (Kroenke 2001); C-SSRS; КР «Депрессивный эпизод, рекуррентное депрессивное расстройство» 2024 (ID 301)
-
-  - id: cssrs_moderate
-    urgency: mandatory
-    when: {fact: cssrs_risk, op: eq, value: moderate}
-    reason: "Умеренный суицидальный риск по C-SSRS: мысли о способе без намерения или попытка давнее 3 месяцев"
-    source: Колумбийская шкала (C-SSRS); КР «Депрессивный эпизод» 2024 (ID 301)
-
-  - id: psychotic_or_manic
-    urgency: mandatory
-    when: {any: [{fact: psychotic_symptoms, op: is_true}, {fact: manic_symptoms, op: is_true}]}
-    reason: Признаки мании или психоза (почти не спит при избытке сил) — возможное биполярное расстройство
-    source: КР «Депрессивный эпизод, рекуррентное депрессивное расстройство» 2024 (ID 301); Закон РФ № 3185-1
+    when: {any: [{fact: phq9_item9, op: gte, value: 1}, {fact: suicide_keywords, op: is_true}]}
+    reason: Мысли о смерти или самоповреждении (PHQ-9, пункт 9, или высказывания пациента)
+    action: Экстренная консультация психиатра; при непосредственной угрозе — скорая помощь (112/103)
+    source: PHQ-9 (Kroenke 2001); КР МЗ РФ «Депрессивный эпизод, рекуррентное депрессивное расстройство» — TODO уточнить ID
 
   - id: severe_depression
     urgency: mandatory
     when: {fact: phq9_total, op: gte, value: 20}
-    reason: Тяжёлые депрессивные симптомы (PHQ-9 ≥ 20)
-    source: PHQ-9 (Kroenke 2001); КР «Депрессивный эпизод» 2024 (ID 301)
+    reason: Тяжёлая депрессивная симптоматика (PHQ-9 ≥ 20)
+    source: PHQ-9 (Kroenke 2001)
+
+  - id: psychotic_or_manic
+    urgency: mandatory
+    when: {any: [{fact: psychotic_symptoms, op: is_true}, {fact: manic_symptoms, op: is_true}]}
+    reason: Признаки психотических или маниакальных симптомов — вне компетенции первичного звена
+    source: TODO(Алина)
 
   - id: substance_use
     urgency: mandatory
-    when: {any: [{fact: substance_dependence, op: is_true}, {fact: alcohol_days_7, op: gte, value: 3},
-                 {fact: other_substances_days_7, op: gte, value: 2}]}
-    reason: Регулярное употребление алкоголя или ПАВ (алкоголь 3 и более дней за неделю или вещества без назначения 2 и более дней — выбор команды)
-    action: Консультация психиатра-нарколога
-    source: Инструкция Авиандра — зависимость «с осторожностью»; КР ГТР 2024 (ID 457)
-
-  - id: no_response_8w
-    urgency: mandatory
-    when: {all: [{fact: weeks_on_therapy, op: gte, value: 8}, {fact: score_improvement_pct, op: lt, value: 25}]}
-    reason: Нет ответа на лечение к 8-й неделе (снижение балла меньше 25%)
-    source: КР ГТР 2024 (ID 457); КР «Депрессивный эпизод» 2024 (ID 301)
-
-  - id: diagnosis_needed
-    urgency: mandatory
-    when: {all: [{fact: doctor_is_psychiatrist, op: is_false}, {fact: has_f_diagnosis, op: is_false},
-                 {any: [{fact: phq9_total, op: gte, value: 10}, {fact: gad7_total, op: gte, value: 10}]}]}
-    reason: Выраженные симптомы тревоги или депрессии, психиатрического диагноза нет — нужен диагноз психиатра для назначения лечения
-    source: Закон РФ № 3185-1 (диагноз психического расстройства ставит психиатр); Приказ МЗ № 668н
-
-  # --- Желательно: плановая консультация ---
-  - id: moderate_with_problems
-    urgency: desirable
-    when: {all: [{fact: has_concomitant_problems, op: is_true},
-                 {any: [{all: [{fact: phq9_total, op: gte, value: 10}, {fact: phq9_total, op: lt, value: 20}]},
-                        {all: [{fact: gad7_total, op: gte, value: 10}, {fact: gad7_total, op: lt, value: 15}]}]}]}
-    reason: Умеренные симптомы (PHQ-9 10–19 или GAD-7 10–14) и сопутствующие проблемы (заболевания, другие препараты, алкоголь или пропуски приёма)
-    source: КР ГТР 2024 (ID 457); КР «Паническое расстройство» 2024 (ID 456)
+    when: {fact: substance_dependence, op: is_true}
+    reason: Сочетание тревоги/депрессии с зависимостью от ПАВ
+    source: TODO(Алина)
 
   - id: severe_anxiety
     urgency: desirable
     when: {fact: gad7_total, op: gte, value: 15}
-    reason: Выраженная тревога (GAD-7 ≥ 15) — выбор команды
-    source: GAD-7 (Spitzer 2006); КР ГТР 2024 (ID 457)
+    reason: Выраженная тревожная симптоматика (GAD-7 ≥ 15)
+    source: GAD-7 (Spitzer 2006)
 
   - id: moderately_severe_depression
     urgency: desirable
     when: {all: [{fact: phq9_total, op: gte, value: 15}, {fact: phq9_total, op: lt, value: 20}]}
-    reason: Умеренно тяжёлые депрессивные симптомы (PHQ-9 15–19) — выбор команды
+    reason: Умеренно тяжёлая депрессия (PHQ-9 15–19)
     source: PHQ-9 (Kroenke 2001)
 
-  - id: no_improvement_4w
+  - id: no_response
     urgency: desirable
-    when: {all: [{fact: weeks_on_therapy, op: gte, value: 4}, {fact: weeks_on_therapy, op: lt, value: 8},
-                 {fact: score_improvement_pct, op: lt, value: 25}]}
-    reason: Нет улучшения к 4-й неделе (снижение балла меньше 25%)
-    source: КР ГТР 2024 (ID 457)
-
-  - id: partial_response_8w
-    urgency: desirable
-    when: {all: [{fact: weeks_on_therapy, op: gte, value: 8}, {fact: score_improvement_pct, op: gte, value: 25},
-                 {fact: score_improvement_pct, op: lt, value: 50}]}
-    reason: Частичный ответ к 8-й неделе (снижение балла на 25–49%)
-    source: КР ГТР 2024 (ID 457); КР «Паническое расстройство» 2024 (ID 456)
+    when: {all: [{fact: weeks_on_therapy, op: gte, value: 4}, {fact: score_improvement_pct, op: lt, value: 25}]}
+    reason: Нет ответа на терапию за 4 недели (снижение балла < 25%)
+    source: TODO(Алина) — критерии ответа на терапию
 
   - id: pregnancy_depression
     urgency: desirable
     when: {all: [{fact: pregnant, op: is_true}, {fact: phq9_total, op: gte, value: 10}]}
-    reason: Депрессивные симптомы при беременности — выбор терапии требует специалиста (выбор команды)
-    source: КР «Депрессивный эпизод» 2024 (ID 301)
+    reason: Клинически значимая депрессивная симптоматика при беременности — выбор терапии требует специалиста
+    source: TODO(Алина)
 
   - id: pregnancy_anxiety
     urgency: desirable
     when: {all: [{fact: pregnant, op: is_true}, {fact: gad7_total, op: gte, value: 10}]}
-    reason: Тревожные симптомы при беременности — выбор терапии требует специалиста (выбор команды)
-    source: КР ГТР 2024 (ID 457)
+    reason: Клинически значимая тревожная симптоматика при беременности — выбор терапии требует специалиста
+    source: TODO(Алина)

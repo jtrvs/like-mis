@@ -11,10 +11,7 @@ from django.db import models
 
 
 class Alert(models.Model):
-    # Категории по таблице правил клинического психолога: красный, оранжевый, жёлтый и «безопасность терапии».
-    # Коды оставлены прежними (critical/high/medium), чтобы не ломать данные и интеграции.
-    SEVERITY = [("critical", "Экстренно"), ("high", "Срочно"), ("medium", "Внимание"), ("safety", "Безопасность")]
-    SEVERITY_ORDER = {"critical": 0, "high": 1, "safety": 2, "medium": 3}
+    SEVERITY = [("critical", "Срочно"), ("high", "Важно"), ("medium", "К сведению")]
     STATUS = [
         ("new", "Создан"),
         ("delivered", "Доставлен"),
@@ -46,8 +43,6 @@ class Alert(models.Model):
     resolution = models.TextField(blank=True, help_text="что сделал врач")
     retries = models.PositiveSmallIntegerField(default=0)
     escalated_to = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="escalated_alerts")
-    escalated_at = models.DateTimeField(null=True, blank=True)
-    false_positive = models.BooleanField(default=False, help_text="врач отметил «ложное срабатывание»")
     exhausted_at = models.DateTimeField(null=True, blank=True, help_text="повторы исчерпаны, никто не отметил — записано в журнал")
 
     class Meta:
@@ -78,7 +73,7 @@ class Alert(models.Model):
             "created_at": self.created_at.isoformat(), "delivery_latency_ms": self.delivery_latency_ms,
             "patient_actions": self.patient_actions, "doctor_actions": self.doctor_actions,
             "phrases": self.facts.get("suicide_keyword_matches", []) if self.rule_id == "suicide_risk_text" else [],
-            "resolution": self.resolution, "false_positive": self.false_positive,
+            "resolution": self.resolution,
             "escalated_to_id": self.escalated_to_id,
             "acknowledged_at": self.acknowledged_at.isoformat() if self.acknowledged_at else None,
             "acknowledged_by_id": self.acknowledged_by_id,

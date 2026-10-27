@@ -18,7 +18,7 @@ class SilentPatientsTests(TestCase):
         with open('/dev/null', 'w') as output:
             call_command('seed_demo', '--reset', stdout=output)
 
-    def make_silent(self, last_name, days=6):
+    def make_silent(self, last_name, days=4):
         """Пациент на терапии последние `days` дней и ни разу не открывал приложение (приёмов в базе нет)."""
         p = PatientProfile.objects.get(last_name=last_name)
         MedicationIntake.objects.filter(prescription__patient=p).delete()
@@ -36,7 +36,7 @@ class SilentPatientsTests(TestCase):
         run_schedule_hook()
         a = self.alerts(p).get()
         self.assertEqual(a.patient_label, f'П-{p.id:04d}')
-        self.assertGreaterEqual(a.facts['unmarked_days'], 5)  # таблица правил 4.2: 5 дней без отметок
+        self.assertGreaterEqual(a.facts['unmarked_doses_streak'], 6)
         # расписание достроено, хотя никто не открывал экран
         self.assertTrue(MedicationIntake.objects.filter(prescription__patient=p).exists())
 
@@ -59,10 +59,7 @@ class SilentPatientsTests(TestCase):
         run_schedule_hook()  # врач отметил — сутки не повторяем
         self.assertEqual(self.alerts(p).count(), 1)
         Alert.objects.filter(pk=a.pk).update(acknowledged_at=timezone.now() - timedelta(hours=25))
-        run_schedule_hook()  # прошли сутки — антиспам 72 ч (таблица правил) ещё действует
-        self.assertEqual(self.alerts(p).count(), 1)
-        Alert.objects.filter(pk=a.pk).update(acknowledged_at=timezone.now() - timedelta(hours=73))
-        run_schedule_hook()  # прошло 72 ч, пациент так и молчит — снова сигнал
+        run_schedule_hook()  # прошли сутки, пациент так и молчит — снова сигнал
         self.assertEqual(self.alerts(p).count(), 2)
 
     def test_patient_label_has_no_name(self):
